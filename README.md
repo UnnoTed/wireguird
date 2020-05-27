@@ -13,4 +13,4 @@ todo:
 
 ## preview (video)
 
-![https://streamable.com/dpthpr](https://raw.githubusercontent.com/UnnoTed/wireguird/master/preview.jpg)
+[![wireguird preview](https://raw.githubusercontent.com/UnnoTed/wireguird/master/preview.jpg)](https://streamable.com/dpthpr)
