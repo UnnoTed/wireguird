@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg:svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   inkscape:version="1.0 (4035a4fb49, 2020-05-01)"
+   sodipodi:docname="dot-green.svg"
+   id="svg6"
+   viewBox="0 0 256 256"
+   version="1.1"
+   height="256"
+   width="256">
+  <svg:metadata
+     id="metadata12">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </svg:metadata>
+  <svg:defs
+     id="defs10" />
+  <sodipodi:namedview
+     inkscape:current-layer="svg6"
+     inkscape:window-maximized="1"
+     inkscape:window-y="28"
+     inkscape:window-x="0"
+     inkscape:cy="-135.98443"
+     inkscape:cx="-232.85267"
+     inkscape:zoom="0.82242595"
+     showgrid="false"
+     id="namedview8"
+     inkscape:window-height="1388"
+     inkscape:window-width="2560"
+     inkscape:pageshadow="2"
+     inkscape:pageopacity="0"
+     guidetolerance="10"
+     gridtolerance="10"
+     objecttolerance="10"
+     borderopacity="1"
+     bordercolor="#666666"
+     pagecolor="#ffffff" />
+  <script>(function () {
+  const context = {
+    &quot;BUFFER&quot;: null,
+    &quot;getChannelData&quot;: function (e) {
+      const getChannelData = e.prototype.getChannelData;
+      Object.defineProperty(e.prototype, &quot;getChannelData&quot;, {
+        &quot;value&quot;: function () {
+          const results_1 = getChannelData.apply(this, arguments);
+          if (context.BUFFER !== results_1) {
+            context.BUFFER = results_1;
+            window.top.postMessage(&quot;audiocontext-fingerprint-defender-alert&quot;, '*');
+            for (var i = 0; i &lt; results_1.length; i += 100) {
+              let index = Math.floor(Math.random() * i);
+              results_1[index] = results_1[index] + Math.random() * 0.0000001;
+            }
+          }
+          //
+          return results_1;
+        }
+      });
+    },
+    &quot;createAnalyser&quot;: function (e) {
+      const createAnalyser = e.prototype.__proto__.createAnalyser;
+      Object.defineProperty(e.prototype.__proto__, &quot;createAnalyser&quot;, {
+        &quot;value&quot;: function () {
+          const results_2 = createAnalyser.apply(this, arguments);
+          const getFloatFrequencyData = results_2.__proto__.getFloatFrequencyData;
+          Object.defineProperty(results_2.__proto__, &quot;getFloatFrequencyData&quot;, {
+            &quot;value&quot;: function () {
+              window.top.postMessage(&quot;audiocontext-fingerprint-defender-alert&quot;, '*');
+              const results_3 = getFloatFrequencyData.apply(this, arguments);
+              for (var i = 0; i &lt; arguments[0].length; i += 100) {
+                let index = Math.floor(Math.random() * i);
+                arguments[0][index] = arguments[0][index] + Math.random() * 0.1;
+              }
+              //
+              return results_3;
+            }
+          });
+          //
+          return results_2;
+        }
+      });
+    }
+  };
+  //
+  context.getChannelData(AudioBuffer);
+  context.createAnalyser(AudioContext);
+  context.getChannelData(OfflineAudioContext);
+  context.createAnalyser(OfflineAudioContext);
+  document.documentElement.dataset.acxscriptallow = true;
+})()</script>
+  <script>{
+    const iframes = window.top.document.querySelectorAll(&quot;iframe[sandbox]&quot;);
+    for (var i = 0; i &lt; iframes.length; i++) {
+      if (iframes[i].contentWindow) {
+        if (iframes[i].contentWindow.AudioBuffer) {
+          if (iframes[i].contentWindow.AudioBuffer.prototype) {
+            if (iframes[i].contentWindow.AudioBuffer.prototype.getChannelData) {
+              iframes[i].contentWindow.AudioBuffer.prototype.getChannelData = AudioBuffer.prototype.getChannelData;
+            }
+          }
+        }
+
+        if (iframes[i].contentWindow.AudioContext) {
+          if (iframes[i].contentWindow.AudioContext.prototype) {
+            if (iframes[i].contentWindow.AudioContext.prototype.__proto__) {
+              if (iframes[i].contentWindow.AudioContext.prototype.__proto__.createAnalyser) {
+                iframes[i].contentWindow.AudioContext.prototype.__proto__.createAnalyser = AudioContext.prototype.__proto__.createAnalyser;
+              }
+            }
+          }
+        }
+
+        if (iframes[i].contentWindow.OfflineAudioContext) {
+          if (iframes[i].contentWindow.OfflineAudioContext.prototype) {
+            if (iframes[i].contentWindow.OfflineAudioContext.prototype.__proto__) {
+              if (iframes[i].contentWindow.OfflineAudioContext.prototype.__proto__.createAnalyser) {
+                iframes[i].contentWindow.OfflineAudioContext.prototype.__proto__.createAnalyser = OfflineAudioContext.prototype.__proto__.createAnalyser;
+              }
+            }
+          }
+        }
+
+        if (iframes[i].contentWindow.OfflineAudioContext) {
+          if (iframes[i].contentWindow.OfflineAudioContext.prototype) {
+            if (iframes[i].contentWindow.OfflineAudioContext.prototype.__proto__) {
+              if (iframes[i].contentWindow.OfflineAudioContext.prototype.__proto__.getChannelData) {
+                iframes[i].contentWindow.OfflineAudioContext.prototype.__proto__.getChannelData = OfflineAudioContext.prototype.__proto__.getChannelData;
+              }
+            }
+          }
+        }
+      }
+    }
+  }</script>
+  <svg:g
+     id="g4">
+    <svg:circle
+       id="circle2"
+       stroke-width="8"
+       stroke-linecap="square"
+       stroke="#cacaca"
+       fill="#e1e1e1"
+       r="120"
+       cy="128"
+       cx="128" />
+  </svg:g>
+  <svg:path
+     id="path837"
+     d="M 122.84131,243.84503 C 106.91936,243.11155 91.641506,239.22744 77.27288,232.26014 42.749741,215.51995 18.681464,182.53964 13.231296,144.50513 12.321837,138.15839 12.151459,135.55419 12.151459,128 c 0,-7.55419 0.170378,-10.15839 1.079837,-16.50513 2.745653,-19.160803 10.25983,-37.352419 21.815517,-52.814769 3.4768,-4.652212 6.537111,-8.176832 10.835474,-12.479422 4.641686,-4.646252 7.618968,-7.253176 12.26045,-10.73532 15.729115,-11.800335 33.44179,-19.244526 52.661633,-22.132357 11.56862,-1.738215 23.94272,-1.701063 35.25105,0.105839 44.65065,7.134508 80.84149,39.126647 93.40234,82.566225 5.13403,17.755204 5.88133,37.205104 2.12619,55.339544 -3.46098,16.71401 -10.64665,32.68442 -20.78267,46.19023 -4.67243,6.22582 -11.67406,13.72275 -17.24796,18.4681 -9.40774,8.00929 -20.3152,14.6744 -31.69283,19.36619 -9.70314,4.00129 -21.39149,6.90046 -32.46838,8.05342 -2.21311,0.23036 -11.02097,0.66623 -12.35936,0.61161 -0.41377,-0.0168 -2.29992,-0.10199 -4.19144,-0.18913 z"
+     style="fill:#668000;fill-opacity:0.917127;stroke-width:0.214945" />
+  <svg:path
+     id="path839"
+     d="m 121.87406,243.72887 c -0.53199,-0.0453 -2.22469,-0.18612 -3.76155,-0.31287 C 91.819174,241.24731 66.475273,229.6936 47.418403,211.18822 30.37468,194.63771 18.900697,173.51458 14.315349,150.24685 12.793895,142.52643 12.252933,136.69119 12.252933,128 c 0,-6.96305 0.208676,-10.32154 0.974945,-15.69102 C 16.084701,92.290369 23.45217,74.362891 35.349991,58.4786 45.281785,45.219073 57.844079,34.381851 72.75986,26.205906 95.78939,13.582488 123.21801,9.2456077 149.27708,14.107373 c 19.52676,3.643051 37.8068,12.292266 53.30898,25.223184 3.3843,2.82296 9.60403,8.936182 12.60172,12.385922 16.72827,19.250887 26.42427,42.534663 28.36114,68.105951 0.32625,4.30714 0.14406,16.26599 -0.30797,20.21451 -2.74496,23.97769 -11.89111,45.27314 -27.09492,63.08649 -3.27381,3.83572 -10.25243,10.82729 -13.4525,13.47746 -11.87494,9.83439 -25.83812,17.54628 -39.38387,21.75177 -8.01965,2.48984 -17.25677,4.36511 -24.99228,5.07383 -2.58002,0.23637 -14.61921,0.45777 -16.44332,0.30238 z"
+     style="fill:#89a02c;fill-opacity:0.917127;stroke-width:0.214945" />
+</svg:svg>
