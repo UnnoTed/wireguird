@@ -115,43 +115,6 @@ debug = false
 
 # type: array of objects
 [[custom]]
-
-  # type: array of strings
-  files = ["./flags/*.png"]
-
-  # base is the path that will be removed from all files' path
-  # type: string
-  base = "./flags/"
-
-  # prefix is the path that will be added to all files' path
-  # type: string
-  prefix = ""
-
-  # build tags for this set of files
-  # it will only work if spread mode is enabled
-  tags = ""
-# end: custom
-# type: array of objects
-[[custom]]
-
-  # type: array of strings
-  files = ["./icon/*"]
-
-  # base is the path that will be removed from all files' path
-  # type: string
-  base = "./"
-
-  # prefix is the path that will be added to all files' path
-  # type: string
-  prefix = ""
-
-  # build tags for this set of files
-  # it will only work if spread mode is enabled
-  tags = ""
-# end: custom
-# type: array of objects
-[[custom]]
-
   # type: array of strings
   files = ["*.glade"]
 

@@ -65,6 +65,7 @@ func ShowError(win *gtk.ApplicationWindow, err error, info ...string) {
 	}
 
 	if _, err := glib.IdleAdd(func() {
+		wlog("ERROR", err.Error())
 		dlg := gtk.MessageDialogNew(win, gtk.DIALOG_MODAL, gtk.MESSAGE_ERROR, gtk.BUTTONS_OK, "%s", err.Error())
 		dlg.SetTitle("Error")
 		dlg.Run()

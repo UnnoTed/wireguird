@@ -1,0 +1,9 @@
+Package: wireguird
+Source: wireguird
+Version: 0.1
+Section: utils
+Priority: extra
+Architecture: amd64
+Depends: wireguard-tools, resolvconf, libgtk-3-dev, libappindicator3-dev (>= 1.0.0)
+Maintainer: UnnoTed
+Description: GTK GUI for Wireguard

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Encoding=UTF-8
+Version=0.1
+Type=Application
+Terminal=false
+Exec=/usr/local/bin/wireguird
+Name=Wireguird
+Icon=/opt/wireguird/Icon/128x128/wireguard.png

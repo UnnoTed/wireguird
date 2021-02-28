@@ -4,7 +4,6 @@ package main
 
 import (
 	"os"
-	"runtime/debug"
 
 	"github.com/UnnoTed/horizontal"
 	"github.com/UnnoTed/wireguird/gui"
@@ -21,7 +20,6 @@ var win *gtk.ApplicationWindow
 func main() {
 	log.Logger = log.Output(horizontal.ConsoleWriter{Out: os.Stderr})
 	log.Info().Uint("major", gtk.GetMajorVersion()).Uint("minor", gtk.GetMinorVersion()).Uint("micro", gtk.GetMicroVersion()).Msg("GTK Version")
-	debug.SetGCPercent(100)
 
 	const appID = "com.wireguard.desktop"
 	application, err := gtk.ApplicationNew(appID, glib.APPLICATION_FLAGS_NONE)
@@ -56,9 +54,9 @@ func createTray(application *gtk.Application) (*appindicator.Indicator, error) {
 	}
 
 	indicator := appindicator.New(application.GetApplicationID(), "wireguard_off", appindicator.CategoryApplicationStatus)
-	indicator.SetIconThemePath("./icon")
+	indicator.SetIconThemePath("/opt/wireguird/Icon/32x32")
 	indicator.SetTitle("Wireguird")
-	indicator.SetLabel("Wireguird", "")
+	// indicator.SetLabel("Wireguird", "")
 	indicator.SetStatus(appindicator.StatusActive)
 	indicator.SetMenu(menu)
 

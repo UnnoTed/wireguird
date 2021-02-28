@@ -94,14 +94,14 @@ func (t *Tunnels) Create() error {
 		var img *gtk.Image
 
 		if activeName == name {
-			green, err := gtk.ImageNewFromFile("./icon/dot-green.png")
+			green, err := gtk.ImageNewFromFile("/opt/wireguird/Icon/dot-green.png")
 			if err != nil {
 				return err
 			}
 
 			img = green
 		} else {
-			gray, err := gtk.ImageNewFromFile("./icon/dot-gray.png")
+			gray, err := gtk.ImageNewFromFile("/opt/wireguird/Icon/dot-gray.png")
 			if err != nil {
 				return err
 			}
@@ -109,7 +109,7 @@ func (t *Tunnels) Create() error {
 		}
 
 		t.icons[name] = img
-		// img, err := gtk.ImageNewFromFile("./icon/dot-gray.png")
+		// img, err := gtk.ImageNewFromFile("/opt/wireguird/Icon/dot-gray.png")
 		// if err != nil {
 		// 	return err
 		// }
@@ -249,7 +249,7 @@ func (t *Tunnels) Create() error {
 
 			activeName = t.ActiveDeviceName()
 			for _, d := range list {
-				gray, err := gtk.ImageNewFromFile("./icon/dot-gray.png")
+				gray, err := gtk.ImageNewFromFile("/opt/wireguird/Icon/dot-gray.png")
 				if err != nil {
 					return err
 				}
@@ -266,6 +266,11 @@ func (t *Tunnels) Create() error {
 			}
 
 			row := tl.GetSelectedRow()
+			// row not found for config
+			if row == nil {
+				return nil
+			}
+
 			name, err := row.GetName()
 			if err != nil {
 				return err
@@ -274,7 +279,10 @@ func (t *Tunnels) Create() error {
 			// dont connect to the new one
 			if activeName != "" && activeName == name {
 				t.UpdateRow(row)
-				header.SetSubtitle("Not connected!")
+
+				glib.IdleAdd(func() {
+					header.SetSubtitle("Not connected!")
+				})
 				return nil
 			}
 
@@ -286,7 +294,7 @@ func (t *Tunnels) Create() error {
 				header.SetSubtitle("Connected to " + name)
 			})
 
-			green, err := gtk.ImageNewFromFile("./icon/dot-green.png")
+			green, err := gtk.ImageNewFromFile("/opt/wireguird/Icon/dot-green.png")
 			if err != nil {
 				return err
 			}
@@ -296,6 +304,11 @@ func (t *Tunnels) Create() error {
 				t.UpdateRow(row)
 				indicator.SetIcon("wireguard")
 			})
+
+			if err := wlog("INFO", "Connected to "+name); err != nil {
+				return err
+			}
+
 			return nil
 		}()
 
@@ -322,6 +335,11 @@ func (t *Tunnels) Create() error {
 			}
 
 			row := tl.GetSelectedRow()
+			if row == nil {
+				t.UnknownLabels()
+				continue
+			}
+
 			name, err := row.GetName()
 			if err != nil {
 				log.Error().Err(err).Msg("row get name err")
@@ -343,9 +361,10 @@ func (t *Tunnels) Create() error {
 
 			for _, p := range d.Peers {
 				hs := humanize.Time(p.LastHandshakeTime)
-				t.Peer.LatestHandshake.SetText(hs)
-
-				t.Peer.Transfer.SetText(humanize.Bytes(uint64(p.ReceiveBytes)) + " received, " + humanize.Bytes(uint64(p.TransmitBytes)) + " sent")
+				glib.IdleAdd(func() {
+					t.Peer.LatestHandshake.SetText(hs)
+					t.Peer.Transfer.SetText(humanize.Bytes(uint64(p.ReceiveBytes)) + " received, " + humanize.Bytes(uint64(p.TransmitBytes)) + " sent")
+				})
 			}
 		}
 	}()
@@ -376,15 +395,17 @@ func (t *Tunnels) UpdateRow(row *gtk.ListBoxRow) {
 		peersec := cfg.Section("Peer")
 		insec := cfg.Section("Interface")
 
-		t.Interface.Addresses.SetText(insec.Key("Address").String())
-		t.Interface.Status.SetText("Inactive")
-		t.Interface.DNS.SetText(insec.Key("DNS").String())
+		glib.IdleAdd(func() {
+			t.Interface.Addresses.SetText(insec.Key("Address").String())
+			t.Interface.Status.SetText("Inactive")
+			t.Interface.DNS.SetText(insec.Key("DNS").String())
 
-		t.ButtonChangeState.SetLabel("Activate")
+			t.ButtonChangeState.SetLabel("Activate")
 
-		t.Peer.AllowedIPs.SetText(peersec.Key("AllowedIPs").String())
-		t.Peer.PublicKey.SetText(peersec.Key("PublicKey").String())
-		t.Peer.Endpoint.SetText(peersec.Key("Endpoint").String())
+			t.Peer.AllowedIPs.SetText(peersec.Key("AllowedIPs").String())
+			t.Peer.PublicKey.SetText(peersec.Key("PublicKey").String())
+			t.Peer.Endpoint.SetText(peersec.Key("Endpoint").String())
+		})
 
 		for _, d := range ds {
 			if d.Name != id {
@@ -397,16 +418,20 @@ func (t *Tunnels) UpdateRow(row *gtk.ListBoxRow) {
 			// 	boxPeers.Remove(item.(*gtk.Widget))
 			// })
 
-			t.Interface.Status.SetText("Active")
-			t.ButtonChangeState.SetLabel("Deactivate")
-			t.Interface.PublicKey.SetText(d.PublicKey.String())
-			t.Interface.ListenPort.SetText(strconv.Itoa(d.ListenPort))
+			glib.IdleAdd(func() {
+				t.Interface.Status.SetText("Active")
+				t.ButtonChangeState.SetLabel("Deactivate")
+				t.Interface.PublicKey.SetText(d.PublicKey.String())
+				t.Interface.ListenPort.SetText(strconv.Itoa(d.ListenPort))
+			})
 
 			for _, p := range d.Peers {
 				hs := humanize.Time(p.LastHandshakeTime)
-				t.Peer.LatestHandshake.SetText(hs)
 
-				t.Peer.Transfer.SetText(humanize.Bytes(uint64(p.ReceiveBytes)) + " received, " + humanize.Bytes(uint64(p.TransmitBytes)) + " sent")
+				glib.IdleAdd(func() {
+					t.Peer.LatestHandshake.SetText(hs)
+					t.Peer.Transfer.SetText(humanize.Bytes(uint64(p.ReceiveBytes)) + " received, " + humanize.Bytes(uint64(p.TransmitBytes)) + " sent")
+				})
 			}
 
 			break
@@ -422,23 +447,25 @@ func (t *Tunnels) UpdateRow(row *gtk.ListBoxRow) {
 }
 
 func (t *Tunnels) UnknownLabels() {
-	t.ButtonChangeState.SetLabel("unknown")
+	glib.IdleAdd(func() {
+		t.ButtonChangeState.SetLabel("unknown")
 
-	t.Interface.Addresses.SetText("unknown")
-	t.Interface.Status.SetText("unknown")
-	t.Interface.DNS.SetText("unknown")
+		t.Interface.Addresses.SetText("unknown")
+		t.Interface.Status.SetText("unknown")
+		t.Interface.DNS.SetText("unknown")
 
-	t.Peer.AllowedIPs.SetText("unknown")
-	t.Peer.PublicKey.SetText("unknown")
-	t.Peer.Endpoint.SetText("unknown")
+		t.Peer.AllowedIPs.SetText("unknown")
+		t.Peer.PublicKey.SetText("unknown")
+		t.Peer.Endpoint.SetText("unknown")
 
-	t.Interface.Status.SetText("unknown")
-	t.ButtonChangeState.SetLabel("unknown")
-	t.Interface.PublicKey.SetText("unknown")
-	t.Interface.ListenPort.SetText("unknown")
-	t.Peer.LatestHandshake.SetText("unknown")
+		t.Interface.Status.SetText("unknown")
+		t.ButtonChangeState.SetLabel("unknown")
+		t.Interface.PublicKey.SetText("unknown")
+		t.Interface.ListenPort.SetText("unknown")
+		t.Peer.LatestHandshake.SetText("unknown")
 
-	t.Peer.Transfer.SetText("unknown")
+		t.Peer.Transfer.SetText("unknown")
+	})
 }
 
 func (t *Tunnels) ActiveDeviceName() string {
@@ -449,4 +476,31 @@ func (t *Tunnels) ActiveDeviceName() string {
 	}
 
 	return ""
+}
+
+func wlog(t string, text string) error {
+	wlogs, err := get.ListBox("wireguard_logs")
+	if err != nil {
+		return err
+	}
+
+	l, err := gtk.LabelNew("")
+	if err != nil {
+		return err
+	}
+
+	if t == "ERROR" {
+		t = `<span color="#FF0000">` + t + "</span>"
+	}
+
+	l.SetMarkup(`<span color="#008080">[` + time.Now().Format("02/Jan/06 15:04:05 MST") + `]</span>[` + t + `]: ` + text)
+	l.SetHExpand(true)
+	l.SetHAlign(gtk.ALIGN_START)
+
+	glib.IdleAdd(func() {
+		l.Show()
+		wlogs.Add(l)
+	})
+
+	return nil
 }
