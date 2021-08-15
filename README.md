@@ -1,16 +1,34 @@
 # wireguird
 
-unfinished, can connect and disconnect... only shows configs from /etc/wireguard/ (1 peer only), requires sudo (wg-quick and /etc/wireguard access), system tray icon goes red when connected, black when disconnected.
+##### a linux gtk gui client for [Wireguard](https://www.wireguard.com/)
 
-todo:
+________________
+Features:
 
-- optional vpn country flag icon in system tray
-- log tab
-- edit config
-- add configs
-- delete configs
-- show errors
+- System tray icon goes red when connected, black when disconnected.
+- Looks the same and does almost the same things as the official Wireguard's Windows gui client.
+- Lists tunnels from `/etc/wireguard`
+- Controls Wireguard ~~*through*~~ `wg-quick`
 
-## preview (video)
+## Preview (video)
 
-[![wireguird preview](https://raw.githubusercontent.com/UnnoTed/wireguird/master/preview.jpg)](https://streamable.com/dpthpr)
+[![wireguird preview](https://raw.githubusercontent.com/UnnoTed/wireguird/master/preview.png)](https://streamable.com/dpthpr)
+
+## Download
+
+##### Ubuntu
+
+tested on: `18.04 LTS`, `20.04 LTS` and `21.04`
+
+[wireguird_amd64.deb (1.8mb)](https://github.com/UnnoTed/wireguird/releases/download/v0.2.0/wireguird_amd64.deb)
+
+## Compile
+
+dependencies: `wireguard-tools libgtk-3-dev libappindicator3-dev`
+
+```sh
+git clone https://github.com/UnnoTed/wireguird
+./deps.sh
+./package.sh
+./install.sh
+```

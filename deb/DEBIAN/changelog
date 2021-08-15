@@ -1,5 +1,14 @@
+wireguird (0.2) UNRELEASED; urgency=medium
+
+  * Add new icons to look the same as the Wireguard client for Windows.
+  * Add a button to Zip all tunnels into a single .zip file.
+  * Add a button to delete tunnels.
+  * Add a tunnel editor.
+
+ -- unknown <unknown@unknown>  Sat, 14 Aug 2021 18:33:37 +0100
+
 wireguird (0.1) UNRELEASED; urgency=medium
 
-  * Initial release. (Closes: #XXXXXX)
+  * Initial release.
 
  -- unknown <unknown@unknown>  Thu, 11 Feb 2021 01:36:25 +0100

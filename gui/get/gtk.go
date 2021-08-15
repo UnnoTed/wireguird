@@ -36,6 +36,20 @@ func ScrolledWindow(name string) (*gtk.ScrolledWindow, error) {
 	return scrolledwindow1, nil
 }
 
+func AboutDialog(name string) (*gtk.AboutDialog, error) {
+	obj, err := Builder.GetObject(name)
+	if err != nil {
+		return nil, err
+	}
+
+	aboutdialog1, ok := obj.(*gtk.AboutDialog)
+	if !ok {
+		return nil, errors.New("cant get *gtk.AboutDialog: " + name)
+	}
+
+	return aboutdialog1, nil
+}
+
 func ColorButton(name string) (*gtk.ColorButton, error) {
 	obj, err := Builder.GetObject(name)
 	if err != nil {
@@ -106,6 +120,20 @@ func Notebook(name string) (*gtk.Notebook, error) {
 	return notebook1, nil
 }
 
+func TextView(name string) (*gtk.TextView, error) {
+	obj, err := Builder.GetObject(name)
+	if err != nil {
+		return nil, err
+	}
+
+	textview1, ok := obj.(*gtk.TextView)
+	if !ok {
+		return nil, errors.New("cant get *gtk.TextView: " + name)
+	}
+
+	return textview1, nil
+}
+
 func Viewport(name string) (*gtk.Viewport, error) {
 	obj, err := Builder.GetObject(name)
 	if err != nil {
@@ -174,6 +202,20 @@ func Switch(name string) (*gtk.Switch, error) {
 	}
 
 	return switch1, nil
+}
+
+func Window(name string) (*gtk.Window, error) {
+	obj, err := Builder.GetObject(name)
+	if err != nil {
+		return nil, err
+	}
+
+	window1, ok := obj.(*gtk.Window)
+	if !ok {
+		return nil, errors.New("cant get *gtk.Window: " + name)
+	}
+
+	return window1, nil
 }
 
 func Entry(name string) (*gtk.Entry, error) {

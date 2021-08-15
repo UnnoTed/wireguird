@@ -54,13 +54,13 @@ func createTray(application *gtk.Application) (*appindicator.Indicator, error) {
 	}
 
 	indicator := appindicator.New(application.GetApplicationID(), "wireguard_off", appindicator.CategoryApplicationStatus)
-	indicator.SetIconThemePath("/opt/wireguird/Icon/32x32")
+	indicator.SetIconThemePath("/opt/wireguird/Icon")
 	indicator.SetTitle("Wireguird")
 	// indicator.SetLabel("Wireguird", "")
 	indicator.SetStatus(appindicator.StatusActive)
 	indicator.SetMenu(menu)
 
-	_, err = menuShow.Connect("activate", func() {
+	menuShow.Connect("activate", func() {
 		win.Show()
 		// createWindow(application)
 	})
@@ -68,12 +68,9 @@ func createTray(application *gtk.Application) (*appindicator.Indicator, error) {
 		return nil, err
 	}
 
-	_, err = menuQuit.Connect("activate", func() {
+	menuQuit.Connect("activate", func() {
 		application.Quit()
 	})
-	if err != nil {
-		return nil, err
-	}
 
 	menu.Add(menuShow)
 	menu.Add(menuQuit)
@@ -89,7 +86,6 @@ func createWindow(application *gtk.Application) error {
 		return err
 	}
 
-	// b, err := gtk.BuilderNewFromFile("./wireguird.glade")
 	b, err := gtk.BuilderNew()
 	b.AddFromString(string(data))
 	if err != nil {

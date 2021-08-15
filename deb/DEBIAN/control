@@ -1,6 +1,6 @@
 Package: wireguird
 Source: wireguird
-Version: 0.1
+Version: 0.2
 Section: utils
 Priority: extra
 Architecture: amd64
