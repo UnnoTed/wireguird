@@ -28,6 +28,7 @@ dependencies: `wireguard-tools libgtk-3-dev libappindicator3-dev`
 
 ```sh
 git clone https://github.com/UnnoTed/wireguird
+cd wireguird
 ./deps.sh
 ./package.sh
 ./install.sh
