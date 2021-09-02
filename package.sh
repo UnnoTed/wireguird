@@ -1,7 +1,7 @@
 echo "wireguird: cleaning..."
 rm -r ./build/wireguird_amd64.deb
 rm -r ./deb/opt/wireguird/
-mkdir ./deb/opt/wireguird
+mkdir -p ./deb/opt/wireguird
 
 echo "wireguird: building go binary..."
 go build -ldflags "-s -w" -trimpath -o ./deb/opt/wireguird/wireguird
