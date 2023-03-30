@@ -2,8 +2,8 @@ package gui
 
 import (
 	"archive/zip"
+	"errors"
 	"fmt"
-	"github.com/ungerik/go-dry"
 	"io"
 	"io/ioutil"
 	"os"
@@ -15,15 +15,29 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ungerik/go-dry"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
+
 	"github.com/UnnoTed/wireguird/gui/get"
+	"github.com/UnnoTed/wireguird/settings"
 	"github.com/dustin/go-humanize"
+	"github.com/gotk3/gotk3/gdk"
 	"github.com/gotk3/gotk3/glib"
 	"github.com/gotk3/gotk3/gtk"
 	"github.com/rs/zerolog/log"
 	"gopkg.in/ini.v1"
 )
 
-var Connected = false
+var (
+	Connected = false
+	Settings  = &settings.Settings{}
+)
+
+func init() {
+	if err := Settings.Init(); err != nil {
+		log.Error().Err(err).Msg("Error on settings init")
+	}
+}
 
 type Tunnels struct {
 	Interface struct {
@@ -40,6 +54,12 @@ type Tunnels struct {
 		Endpoint        *gtk.Label
 		LatestHandshake *gtk.Label
 		Transfer        *gtk.Label
+	}
+
+	Settings struct {
+		MultipleTunnels *gtk.CheckButton
+		StartOnTray     *gtk.CheckButton
+		CheckUpdates    *gtk.CheckButton
 	}
 
 	ButtonChangeState *gtk.Button
@@ -62,6 +82,17 @@ func (t *Tunnels) Create() error {
 		return err
 	}
 
+	window.Connect("key-press-event", func(win *gtk.ApplicationWindow, ev *gdk.Event) {
+		keyEvent := &gdk.EventKey{ev}
+
+		if keyEvent.KeyVal() == gdk.KEY_F5 {
+			wlog("INFO", "Scanning tunnels from keyboard command (F5)")
+			if err := t.ScanTunnels(); err != nil {
+				wlog("ERROR", err.Error())
+			}
+		}
+	})
+
 	// menu
 	{
 		mb, err := get.MenuButton("menu")
@@ -73,6 +104,18 @@ func (t *Tunnels) Create() error {
 		if err != nil {
 			return err
 		}
+
+		mSettings, err := gtk.MenuItemNew()
+		if err != nil {
+			return err
+		}
+
+		mSettings.SetLabel("Settings")
+		//mSettings.SetSensitive(false)
+		mSettings.Connect("activate", func() {
+			settingsWindow.ShowAll()
+		})
+		menu.Append(mSettings)
 
 		mVersion, err := gtk.MenuItemNew()
 		if err != nil {
@@ -157,9 +200,27 @@ func (t *Tunnels) Create() error {
 				return err
 			}
 
-			activeName := t.ActiveDeviceName()
-			for _, d := range list {
-				gray, err := gtk.ImageNewFromFile("/opt/wireguird/Icon/not_connected.png")
+			activeNames := t.ActiveDeviceName()
+			row := tl.GetSelectedRow()
+			// row not found for config
+			if row == nil {
+				return nil
+			}
+
+			// conf name
+			name, err := row.GetName()
+			if err != nil {
+				return err
+			}
+
+			// https://github.com/UnnoTed/wireguird/issues/11#issuecomment-1332047191
+			if len(name) >= 16 {
+				ShowError(window, errors.New("Tunnel's file name is too long ("+strconv.Itoa(len(name))+"), max length: 15"))
+			}
+
+			// disconnect from given tunnel
+			dc := func(d *wgtypes.Device) error {
+				gray, err := gtk.ImageNewFromFile(IconPath + "not_connected.png")
 				if err != nil {
 					return err
 				}
@@ -168,47 +229,87 @@ func (t *Tunnels) Create() error {
 					t.icons[d.Name].SetFromPixbuf(gray.GetPixbuf())
 				})
 
-				if err := exec.Command("wg-quick", "down", d.Name).Run(); err != nil {
-					return err
+				c := exec.Command("wg-quick", "down", d.Name)
+				output, err := c.Output()
+				if err != nil {
+					es := string(err.(*exec.ExitError).Stderr)
+					log.Error().Err(err).Str("output", string(output)).Str("error", es).Msg("wg-quick down error")
+
+					oerr := err.Error() + "\nwg-quick's output:\n" + es
+					wlog("ERROR", oerr)
+					return errors.New(oerr)
 				}
 
 				indicator.SetIcon("wireguard_off")
+				return wlog("INFO", "Disconnected from "+d.Name)
 			}
 
-			row := tl.GetSelectedRow()
-			// row not found for config
-			if row == nil {
-				return nil
+			// disconnects from all tunnels before connecting to a new one
+			// when the multipleTunnels option is disabled
+			if Settings.MultipleTunnels {
+				log.Info().Str("name", name).Msg("NAME")
+				d, err := wgc.Device(name)
+				if err != nil && !errors.Is(err, os.ErrNotExist) {
+					return err
+				}
+
+				if !errors.Is(err, os.ErrNotExist) {
+					if err := dc(d); err != nil {
+						return err
+					}
+				}
+
+			} else {
+				for _, d := range list {
+					if err := dc(d); err != nil {
+						return err
+					}
+				}
 			}
 
-			name, err := row.GetName()
-			if err != nil {
-				return err
-			}
-
-			// dont connect to the new one
-			if activeName != "" && activeName == name {
+			// dont connect to the new one as this is a disconnect action
+			if dry.StringListContains(activeNames, name) {
 				t.UpdateRow(row)
 
 				glib.IdleAdd(func() {
-					header.SetSubtitle("Not connected!")
+					if len(activeNames) == 1 {
+						header.SetSubtitle("Not connected!")
+					} else {
+						activeNames := t.ActiveDeviceName()
+						header.SetSubtitle("Connected to " + strings.Join(activeNames, ", "))
+					}
 				})
 				return nil
 			}
 
-			if err := exec.Command("wg-quick", "up", name).Run(); err != nil {
-				return err
+			// connect to a tunnel
+			c := exec.Command("wg-quick", "up", name)
+			output, err := c.Output()
+			if err != nil {
+				es := string(err.(*exec.ExitError).Stderr)
+				log.Error().Err(err).Str("output", string(output)).Str("error", es).Msg("wg-quick up error")
+
+				oerr := err.Error() + "\nwg-quick's output:\n" + es
+				wlog("ERROR", oerr)
+				return errors.New(oerr)
 			}
 
-			glib.IdleAdd(func() {
-				header.SetSubtitle("Connected to " + name)
-			})
-
-			green, err := gtk.ImageNewFromFile("/opt/wireguird/Icon/connected.png")
 			if err != nil {
 				return err
 			}
 
+			// update header label with tunnel names
+			glib.IdleAdd(func() {
+				activeNames := t.ActiveDeviceName()
+				header.SetSubtitle("Connected to " + strings.Join(activeNames, ", "))
+			})
+
+			green, err := gtk.ImageNewFromFile(IconPath + "connected.png")
+			if err != nil {
+				return err
+			}
+
+			// set icon to connected for the tunnel's row
 			glib.IdleAdd(func() {
 				t.icons[name].SetFromPixbuf(green.GetPixbuf())
 				t.UpdateRow(row)
@@ -245,7 +346,7 @@ func (t *Tunnels) Create() error {
 	btnAddTunnel.Connect("clicked", func() {
 		err := func() error {
 			log.Print("btn add tunnel")
-			dialog, err := gtk.FileChooserNativeDialogNew("Wireguird - Choose a tunnel file (*.conf)", window, gtk.FILE_CHOOSER_ACTION_OPEN, "OK", "Cancel")
+			dialog, err := gtk.FileChooserNativeDialogNew("Wireguird - Choose tunnel files (*.conf)", window, gtk.FILE_CHOOSER_ACTION_OPEN, "OK", "Cancel")
 			if err != nil {
 				return err
 			}
@@ -259,20 +360,24 @@ func (t *Tunnels) Create() error {
 			filter.AddPattern("*.conf")
 			filter.SetName("*.conf")
 			dialog.AddFilter(filter)
+			dialog.SetSelectMultiple(true)
 
 			res := dialog.Run()
 			if gtk.ResponseType(res) == gtk.RESPONSE_ACCEPT {
-				fname := dialog.GetFilename()
-				log.Print(fname)
-
-				data, err := ioutil.ReadFile(fname)
+				list, err := dialog.GetFilenames()
 				if err != nil {
 					return err
 				}
+				for _, fname := range list {
+					data, err := ioutil.ReadFile(fname)
+					if err != nil {
+						return err
+					}
 
-				err = ioutil.WriteFile(filepath.Join(TunnelsPath, filepath.Base(fname)), data, 666)
-				if err != nil {
-					return err
+					err = ioutil.WriteFile(filepath.Join(TunnelsPath, filepath.Base(fname)), data, 666)
+					if err != nil {
+						return err
+					}
 				}
 
 				if err := t.ScanTunnels(); err != nil {
@@ -664,6 +769,52 @@ func (t *Tunnels) Create() error {
 		}
 	})
 
+	//////////////
+	// Settings
+
+	// button: settings save
+	btnSettingsSave, err := get.Button("button_settings_save")
+	if err != nil {
+		return err
+	}
+
+	btnSettingsSave.Connect("clicked", func() {
+		err := func() error {
+			t.ToSettings()
+			Settings.Save()
+			settingsWindow.Close()
+
+			return nil
+		}()
+
+		if err != nil {
+			ShowError(window, err, "settings save error")
+		}
+	})
+
+	// button: settings cancel
+	btnSettingsCancel, err := get.Button("button_settings_cancel")
+	if err != nil {
+		return err
+	}
+
+	btnSettingsCancel.Connect("clicked", func() {
+		err := func() error {
+			Settings.Init()
+			settingsWindow.Close()
+
+			return nil
+		}()
+
+		if err != nil {
+			ShowError(window, err, "settings cancel error")
+		}
+	})
+
+	if err := t.FromSettings(); err != nil {
+		return err
+	}
+
 	go func() {
 		for {
 			<-t.ticker.C
@@ -684,7 +835,7 @@ func (t *Tunnels) Create() error {
 				continue
 			}
 
-			if name != t.ActiveDeviceName() {
+			if !dry.StringListContains(t.ActiveDeviceName(), name) {
 				continue
 			}
 
@@ -709,6 +860,40 @@ func (t *Tunnels) Create() error {
 
 	return nil
 }
+
+func (t *Tunnels) ToSettings() {
+	Settings.MultipleTunnels = t.Settings.MultipleTunnels.GetActive()
+	Settings.StartOnTray = t.Settings.StartOnTray.GetActive()
+	Settings.CheckUpdates = t.Settings.CheckUpdates.GetActive()
+}
+
+func (t *Tunnels) FromSettings() error {
+	log.Debug().Interface("settings", Settings).Msg("tunnel.FromSettings()")
+	var err error
+	// checkbox: multiple tunnels
+	t.Settings.MultipleTunnels, err = get.CheckButton("settings_multiple_active_tunnels")
+	if err != nil {
+		return err
+	}
+	t.Settings.MultipleTunnels.SetActive(Settings.MultipleTunnels)
+
+	// checkbox: start on tray
+	t.Settings.StartOnTray, err = get.CheckButton("settings_start_tray")
+	if err != nil {
+		return err
+	}
+	t.Settings.StartOnTray.SetActive(Settings.StartOnTray)
+
+	// checkbox: check updates
+	t.Settings.CheckUpdates, err = get.CheckButton("settings_check_updates")
+	if err != nil {
+		return err
+	}
+	t.Settings.CheckUpdates.SetActive(Settings.CheckUpdates)
+
+	return nil
+}
+
 func (t *Tunnels) UpdateRow(row *gtk.ListBoxRow) {
 	err := func() error {
 		ds, err := wgc.Devices()
@@ -820,7 +1005,8 @@ func (t *Tunnels) ScanTunnels() error {
 		return configList[a] < configList[b]
 	})
 
-	activeName := t.ActiveDeviceName()
+	activeNames := t.ActiveDeviceName()
+	header.SetSubtitle("Connected to " + strings.Join(activeNames, ", "))
 
 	lasti := len(configList) - 1
 	for i, name := range configList {
@@ -837,23 +1023,17 @@ func (t *Tunnels) ScanTunnels() error {
 			row.SetMarginBottom(8)
 		}
 
-		// icon, err := gtk.ButtonNew()
-		// icon, err := gtk.ColorButtonNew()
-		// if err != nil {
-		// 	return err
-		// }
-
 		var img *gtk.Image
 
-		if activeName == name {
-			green, err := gtk.ImageNewFromFile("/opt/wireguird/Icon/connected.png")
+		if dry.StringListContains(activeNames, name) {
+			green, err := gtk.ImageNewFromFile(IconPath + "connected.png")
 			if err != nil {
 				return err
 			}
 
 			img = green
 		} else {
-			gray, err := gtk.ImageNewFromFile("/opt/wireguird/Icon/not_connected.png")
+			gray, err := gtk.ImageNewFromFile(IconPath + "not_connected.png")
 			if err != nil {
 				return err
 			}
@@ -861,62 +1041,18 @@ func (t *Tunnels) ScanTunnels() error {
 		}
 
 		t.icons[name] = img
-		// img, err := gtk.ImageNewFromFile("/opt/wireguird/Icon/not_connected.png")
-		// if err != nil {
-		// 	return err
-		// }
-
-		// icon.SetImage(img)
-
-		// dg, err := static.ReadFile("icon/dot-gray.svg")
-		// if err != nil {
-		// 	return err
-		// }
-
-		// pbl, err := gdk.PixbufLoaderNew()
-		// if err != nil {
-		// 	return err
-		// }
-
-		// pb, err := pbl.WriteAndReturnPixbuf(dg)
-		// if err != nil {
-		// 	return err
-		// }
-
-		// img, err := gtk.ImageNewFromPixbuf(pb)
-		// if err != nil {
-		// 	return err
-		// }
-
-		// icon.Image
-		// icon.SetImage(img)
 
 		img.SetVAlign(gtk.ALIGN_CENTER)
 		img.SetHAlign(gtk.ALIGN_START)
 		img.SetSizeRequest(10, 10)
-		// icon.SetMarginBottom(0)
-		// icon.SetMarginTop(0)
 		img.SetVExpand(false)
 		img.SetHExpand(false)
-
-		// sctx, err := icon.GetStyleContext()
-		// if err != nil {
-		// 	return err
-		// }
-		// sctx.AddClass("circular")
-
-		// if name == activeName {
-		// 	sctx.AddClass("btn-green")
-		// 	// rgba := gdk.NewRGBA(102, 204, 153, 1)
-
-		// }
 
 		label, err := gtk.LabelNew(name)
 		if err != nil {
 			return err
 		}
 		label.SetHAlign(gtk.ALIGN_START)
-		// label.SetHExpand(true)
 
 		label.SetMarginStart(8)
 		label.SetMarginEnd(8)
@@ -937,6 +1073,14 @@ func (t *Tunnels) ScanTunnels() error {
 		tl.Insert(row, -1)
 
 		if name == t.lastSelected {
+			tl.SelectRow(row)
+			t.UpdateRow(row)
+		}
+	}
+
+	if t.lastSelected == "" {
+		row := tl.GetRowAtIndex(0)
+		if row != nil {
 			tl.SelectRow(row)
 			t.UpdateRow(row)
 		}
@@ -967,14 +1111,15 @@ func (t *Tunnels) UnknownLabels() {
 	})
 }
 
-func (t *Tunnels) ActiveDeviceName() string {
+func (t *Tunnels) ActiveDeviceName() []string {
 	ds, _ := wgc.Devices()
 
+	var names []string
 	for _, d := range ds {
-		return d.Name
+		names = append(names, d.Name)
 	}
 
-	return ""
+	return names
 }
 
 func wlog(t string, text string) error {

@@ -13,6 +13,7 @@ func main() {
 		"ApplicationWindow",
 		"ScrolledWindow",
 		"AboutDialog",
+		"CheckButton",
 		"ColorButton",
 		"MenuButton",
 		"HeaderBar",

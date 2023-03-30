@@ -5,10 +5,10 @@ package main
 import (
 	"os"
 
+	"github.com/UnnoTed/go-appindicator"
 	"github.com/UnnoTed/horizontal"
 	"github.com/UnnoTed/wireguird/gui"
 	"github.com/UnnoTed/wireguird/static"
-	"github.com/dawidd6/go-appindicator"
 	"github.com/gotk3/gotk3/gdk"
 	"github.com/gotk3/gotk3/glib"
 	"github.com/gotk3/gotk3/gtk"
@@ -20,6 +20,10 @@ var win *gtk.ApplicationWindow
 func main() {
 	log.Logger = log.Output(horizontal.ConsoleWriter{Out: os.Stderr})
 	log.Info().Uint("major", gtk.GetMajorVersion()).Uint("minor", gtk.GetMinorVersion()).Uint("micro", gtk.GetMicroVersion()).Msg("GTK Version")
+
+	if err := gui.Settings.Load(); err != nil {
+		log.Error().Err(err).Msg("error initial settings load")
+	}
 
 	const appID = "com.wireguard.desktop"
 	application, err := gtk.ApplicationNew(appID, glib.APPLICATION_FLAGS_NONE)
@@ -140,7 +144,10 @@ func createWindow(application *gtk.Application) error {
 		return err
 	}
 
-	win.ShowAll()
+	if !gui.Settings.StartOnTray {
+		win.ShowAll()
+	}
+
 	win.SetTitle("Wireguird")
 
 	return nil

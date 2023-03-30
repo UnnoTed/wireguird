@@ -1,8 +1,13 @@
 package gui
 
 import (
+	"encoding/json"
+	"io/ioutil"
+	"net/http"
+	"time"
+
+	"github.com/UnnoTed/go-appindicator"
 	"github.com/UnnoTed/wireguird/gui/get"
-	"github.com/dawidd6/go-appindicator"
 	"github.com/gotk3/gotk3/glib"
 	"github.com/gotk3/gotk3/gtk"
 	"github.com/rs/zerolog/log"
@@ -10,19 +15,22 @@ import (
 )
 
 const (
-	Version     = "0.2.0"
+	Version     = "1.0.0"
 	Repo        = "https://github.com/UnnoTed/wireguird"
 	TunnelsPath = "/etc/wireguard/"
+	IconPath    = "/opt/wireguird/Icon/"
 )
 
 var (
-	editorWindow *gtk.Window
-	application  *gtk.Application
-	indicator    *appindicator.Indicator
-	builder      *gtk.Builder
-	window       *gtk.ApplicationWindow
-	header       *gtk.HeaderBar
-	wgc          *wgctrl.Client
+	settingsWindow *gtk.Window
+	editorWindow   *gtk.Window
+	application    *gtk.Application
+	indicator      *appindicator.Indicator
+	builder        *gtk.Builder
+	window         *gtk.ApplicationWindow
+	header         *gtk.HeaderBar
+	wgc            *wgctrl.Client
+	updateTicker   *time.Ticker
 )
 
 func Create(app *gtk.Application, b *gtk.Builder, w *gtk.ApplicationWindow, ind *appindicator.Indicator) error {
@@ -61,9 +69,34 @@ func Create(app *gtk.Application, b *gtk.Builder, w *gtk.ApplicationWindow, ind 
 		return err
 	}
 
+	if _, err := createSettings(false); err != nil {
+		return err
+	}
+
 	t := &Tunnels{}
 	if err := t.Create(); err != nil {
 		return err
+	}
+
+	if Settings.CheckUpdates {
+		go func() {
+			time.Sleep(60 * time.Second)
+			if err := updateCheck(); err != nil {
+				log.Error().Err(err).Msg("error on update check")
+			}
+
+			updateTicker = time.NewTicker(24 * time.Hour)
+			defer updateTicker.Stop()
+
+			for {
+				select {
+				case <-updateTicker.C:
+					if err := updateCheck(); err != nil {
+						log.Error().Err(err).Msg("error on update check")
+					}
+				}
+			}
+		}()
 	}
 
 	window.HideOnDelete()
@@ -109,4 +142,60 @@ func createEditor(name string, show bool) (*gtk.Window, error) {
 	}
 
 	return editorWindow, nil
+}
+
+func createSettings(show bool) (*gtk.Window, error) {
+	if settingsWindow == nil {
+		var err error
+		settingsWindow, err = get.Window("settings_window")
+		if err != nil {
+			log.Error().Err(err).Msg("error getting main_window")
+			return nil, err
+		}
+
+		// prevents having to re-create the settings window
+		settingsWindow.HideOnDelete()
+	}
+
+	if show {
+		settingsWindow.SetTitle("Wireguird - Settings")
+		settingsWindow.ShowAll()
+	}
+
+	return settingsWindow, nil
+}
+
+func updateCheck() error {
+	log.Info().Msg("Checking for updates")
+	resp, err := http.Get("https://api.github.com/repos/UnnoTed/wireguird/releases")
+	if err != nil {
+		return err
+	}
+
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	j := []map[string]interface{}{}
+	if err := json.Unmarshal(data, &j); err != nil {
+		return err
+	}
+
+	log.Info().Interface("json", j).Msg("response")
+
+	if len(j) > 0 {
+		latest := j[0]
+
+		if tagName, ok := latest["tag_name"].(string); ok && tagName != "v"+Version {
+			glib.IdleAdd(func() {
+				d := gtk.MessageDialogNew(window, gtk.DIALOG_MODAL, gtk.MESSAGE_INFO, gtk.BUTTONS_OK, "Wireguird: update available => "+tagName)
+				defer d.Destroy()
+
+				d.Run()
+			})
+		}
+	}
+
+	return nil
 }

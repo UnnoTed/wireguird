@@ -50,6 +50,20 @@ func AboutDialog(name string) (*gtk.AboutDialog, error) {
 	return aboutdialog1, nil
 }
 
+func CheckButton(name string) (*gtk.CheckButton, error) {
+	obj, err := Builder.GetObject(name)
+	if err != nil {
+		return nil, err
+	}
+
+	checkbutton1, ok := obj.(*gtk.CheckButton)
+	if !ok {
+		return nil, errors.New("cant get *gtk.CheckButton: " + name)
+	}
+
+	return checkbutton1, nil
+}
+
 func ColorButton(name string) (*gtk.ColorButton, error) {
 	obj, err := Builder.GetObject(name)
 	if err != nil {
