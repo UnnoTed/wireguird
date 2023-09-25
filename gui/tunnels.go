@@ -346,19 +346,21 @@ func (t *Tunnels) Create() error {
 	btnAddTunnel.Connect("clicked", func() {
 		err := func() error {
 			log.Print("btn add tunnel")
-			dialog, err := gtk.FileChooserNativeDialogNew("Wireguird - Choose tunnel files (*.conf)", window, gtk.FILE_CHOOSER_ACTION_OPEN, "OK", "Cancel")
+			dialog, err := gtk.FileChooserNativeDialogNew("Wireguird - Choose tunnel files (*.conf, *.zip)", window, gtk.FILE_CHOOSER_ACTION_OPEN, "OK", "Cancel")
 			if err != nil {
 				return err
 			}
 			defer dialog.Destroy()
 
-			// filter *.conf files
+			// filter *.conf and *.zip files
 			filter, err := gtk.FileFilterNew()
 			if err != nil {
 				return err
 			}
 			filter.AddPattern("*.conf")
-			filter.SetName("*.conf")
+			filter.AddPattern("*.zip")
+			filter.SetName("*.conf / *.zip")
+
 			dialog.AddFilter(filter)
 			dialog.SetSelectMultiple(true)
 
@@ -369,6 +371,15 @@ func (t *Tunnels) Create() error {
 					return err
 				}
 				for _, fname := range list {
+					// if file is zip archive
+					if strings.HasSuffix(fname, ".zip") {
+						err := parseZipArchive(fname)
+						if err != nil {
+							return err
+						}
+						continue
+					}
+
 					data, err := ioutil.ReadFile(fname)
 					if err != nil {
 						return err
@@ -1145,6 +1156,37 @@ func wlog(t string, text string) error {
 		l.Show()
 		wlogs.Add(l)
 	})
+
+	return nil
+}
+
+func parseZipArchive(target string) error {
+	rc, err := zip.OpenReader(target)
+	if err != nil {
+		return err
+	}
+	defer rc.Close()
+
+	for _, f := range rc.File {
+		// parse only .conf files from zip archive
+		if !f.FileInfo().IsDir() && strings.HasSuffix(f.FileInfo().Name(), ".conf") {
+			fr, err := f.Open()
+			if err != nil {
+				return err
+			}
+			defer fr.Close()
+
+			data, err := ioutil.ReadAll(fr)
+			if err != nil {
+				return err
+			}
+
+			err = ioutil.WriteFile(filepath.Join(TunnelsPath, f.FileInfo().Name()), data, 666)
+			if err != nil {
+				return err
+			}
+		}
+	}
 
 	return nil
 }
