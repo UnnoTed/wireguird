@@ -414,7 +414,7 @@ func (t *Tunnels) Create() error {
 		err := func() error {
 			row := tl.GetSelectedRow()
 			if row == nil {
-				return fmt.Errorf("No row selected.")
+				return errors.New("No row selected.")
 			}
 
 			name, err := row.GetName()
