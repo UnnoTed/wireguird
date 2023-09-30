@@ -413,6 +413,10 @@ func (t *Tunnels) Create() error {
 	btnDelTunnel.Connect("clicked", func() {
 		err := func() error {
 			row := tl.GetSelectedRow()
+			if row == nil {
+				return errors.New("No row selected.")
+			}
+
 			name, err := row.GetName()
 			if err != nil {
 				return err
