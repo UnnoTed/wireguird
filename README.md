@@ -23,8 +23,12 @@ v0.2.0 tested on: Ubuntu `18.04 LTS`, `20.04 LTS` and `21.04`
 v1.0.0 tested on: Ubuntu `22.04 LTS` and `22.10`, Linux Mint `21.1`
 
 [wireguird_amd64.deb (2.6mb)](https://github.com/UnnoTed/wireguird/releases/download/v1.0.0/wireguird_amd64.deb)
+
+v1.1.0 tested on: Ubuntu `23.04`
+
+[wireguird_amd64.deb (2.6mb)](https://github.com/UnnoTed/wireguird/releases/download/v1.1.0/wireguird_amd64.deb)
 ```sh
-wget https://github.com/UnnoTed/wireguird/releases/download/v1.0.0/wireguird_amd64.deb
+wget https://github.com/UnnoTed/wireguird/releases/download/v1.1.0/wireguird_amd64.deb
 sudo dpkg -i ./wireguird_amd64.deb
 ```
 

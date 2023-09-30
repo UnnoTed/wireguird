@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	Version     = "1.0.0"
+	Version     = "1.1.0"
 	Repo        = "https://github.com/UnnoTed/wireguird"
 	TunnelsPath = "/etc/wireguard/"
 	IconPath    = "/opt/wireguird/Icon/"

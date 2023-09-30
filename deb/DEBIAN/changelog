@@ -1,3 +1,12 @@
+wireguird (1.1) UNRELEASED; urgency=medium
+
+  * Add ability to import multiple config files at once (zip archive)
+  * Fix error when deleting a tunnel without a selected tunnel
+  * Add dependency installation for debian
+  * Fix long lines not activating horizontal scroll
+
+ -- unknown <unknown@unknown>  Wed, 29 Mar 2023 19:19:11 +0100
+
 wireguird (1.0) UNRELEASED; urgency=medium
 
   * Add settings window.

@@ -1,6 +1,6 @@
 [Desktop Entry]
 Encoding=UTF-8
-Version=1.0
+Version=1.1
 Type=Application
 Terminal=false
 Exec=/usr/local/bin/wireguird
