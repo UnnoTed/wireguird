@@ -1,0 +1,41 @@
+# This workflow will build a golang project
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
+
+name: Build wireguird .deb
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.20'
+
+#    - name: Install Package Dependencies
+#      run: |
+#          echo "resolvconf resolvconf/linkify-resolvconf boolean false" | debconf-set-selections
+#          sudo apt-get update
+#          sudo apt-get install -y wireguard-tools libgtk-3-dev libayatana-appindicator3-dev golang-go resolvconf
+
+    - name: Build .deb
+      run: |
+          chmod +x *.sh
+          ./package_deb.sh
+    
+    - name: Install package
+      run: |
+          sudo apt install ./build/wireguird_amd64.deb
+
+
+
+

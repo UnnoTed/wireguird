@@ -5,6 +5,8 @@ if [[ -f "/etc/os-release" ]]; then
         #sudo rpm
     elif [[ "${ID}" == "ubuntu" ]]; then
         sudo dpkg -i ./build/wireguird_amd64.deb
+    elif [[ "${ID}" == "linuxmint" ]]; then
+        sudo dpkg -i ./build/wireguird_amd64.deb
     fi
 fi
 
