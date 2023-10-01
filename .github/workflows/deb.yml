@@ -34,7 +34,7 @@ jobs:
     
     - name: Install package
       run: |
-          dpkg -i ./build/wireguird_amd64.deb
+          sudo dpkg -i ./build/wireguird_amd64.deb
 
 
 
