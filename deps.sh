@@ -7,5 +7,7 @@ if [[ -f "/etc/os-release" ]]; then
         sudo apt install wireguard-tools libgtk-3-dev libayatana-appindicator3-dev golang-go resolvconf
     elif [[ "${ID}" == "debian" ]]; then
         sudo apt install wireguard-tools libgtk-3-dev libayatana-appindicator3-dev golang-go resolvconf
+	elif [[ "${ID}" == "void" ]]; then
+		sudo xbps-install -S gtk+3-devel wireguard-dkms wireguard-tools libayatana-appindicator-devel go
     fi
 fi

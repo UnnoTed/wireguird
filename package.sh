@@ -7,5 +7,8 @@ if [[ -f "/etc/os-release" ]]; then
     elif [[ "${ID}" == "ubuntu" ]]; then
         echo "deb package"
         ./package_deb.sh
+	elif [[ "${ID}" == "void" ]]; then
+		echo "xbps package"
+		./package_xbps.sh
     fi
 fi
