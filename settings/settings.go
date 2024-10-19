@@ -3,18 +3,19 @@ package settings
 import (
 	"encoding/json"
 	"io/ioutil"
+	"os"
+	"path/filepath"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/ungerik/go-dry"
 )
 
-const FilePath = "./wireguird.settings"
-
 type Settings struct {
 	MultipleTunnels bool
 	StartOnTray     bool
 	CheckUpdates    bool
+	TunnelsPath     string
 	Debug           bool
 }
 
@@ -23,10 +24,18 @@ var (
 	checkUpdates    *bool
 	debug           *bool
 	tray            *bool
+	filePath        string
 )
 
 func (s *Settings) Init() error {
 	log.Debug().Msg("Settings init")
+
+	exePath, err := os.Executable()
+	if err != nil {
+		return err
+	}
+
+	filePath = filepath.Join(filepath.Dir(exePath), "wireguird.settings")
 
 	if err := s.Load(); err != nil {
 		return err
@@ -48,7 +57,7 @@ func (s *Settings) Save() error {
 		return err
 	}
 
-	if err := ioutil.WriteFile(FilePath, data, 0660); err != nil {
+	if err := ioutil.WriteFile(filePath, data, 0666); err != nil {
 		return err
 	}
 
@@ -58,12 +67,12 @@ func (s *Settings) Save() error {
 
 func (s *Settings) Load() error {
 	log.Debug().Msg("loading settings")
-	if !dry.FileExists(FilePath) {
+	if !dry.FileExists(filePath) {
 		log.Debug().Msg("settings file doesnt exist")
 		return nil
 	}
 
-	data, err := ioutil.ReadFile(FilePath)
+	data, err := ioutil.ReadFile(filePath)
 	if err != nil {
 		return err
 	}
