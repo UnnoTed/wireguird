@@ -1,0 +1,29 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install build dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y wireguard-tools libgtk-3-dev libayatana-appindicator3-dev golang-go
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Build deb
+        run: ./package_deb.sh
+
+      - name: Create release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "$GITHUB_REF_NAME" --notes "Release $GITHUB_REF_NAME" ./build/*.deb

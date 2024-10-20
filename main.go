@@ -4,6 +4,7 @@ package main
 
 import (
 	"os"
+	"strings"
 
 	"github.com/UnnoTed/go-appindicator"
 	"github.com/UnnoTed/horizontal"
@@ -20,6 +21,15 @@ var win *gtk.ApplicationWindow
 func main() {
 	log.Logger = log.Output(horizontal.ConsoleWriter{Out: os.Stderr})
 	log.Info().Uint("major", gtk.GetMajorVersion()).Uint("minor", gtk.GetMinorVersion()).Uint("micro", gtk.GetMicroVersion()).Msg("GTK Version")
+
+	if gui.Settings.TunnelsPath == "" {
+		gui.TunnelsPath = gui.DefaultTunnelsPath
+	} else {
+		gui.TunnelsPath = gui.Settings.TunnelsPath
+	}
+	if !strings.HasSuffix(gui.TunnelsPath, "/") {
+		gui.TunnelsPath += "/"
+	}
 
 	if err := gui.Settings.Load(); err != nil {
 		log.Error().Err(err).Msg("error initial settings load")
