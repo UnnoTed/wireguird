@@ -1,6 +1,7 @@
 name: linux 64 bit build
 on:
   workflow_dispatch:
+  push:
 jobs:
   build:
     runs-on: ubuntu-22.04
