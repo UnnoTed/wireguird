@@ -6,10 +6,16 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     steps: 
-      - name: get code
+      - name: Get code
         uses: actions/checkout@v4
-      - name: install dependencies
+      - name: Install dependencies
         run: |
           sudo apt install wireguard-tools libgtk-3-dev libayatana-appindicator3-dev golang-go
+      - name: Compile
+        run: | 
+          chmod +x ./*.sh
+          ./deps.sh
+          ./package.sh
+          ./install.sh
       
     
