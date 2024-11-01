@@ -14,10 +14,10 @@ jobs:
       - name: Compile
         run: | 
           ./package.sh
-#      - name: Artifacts
-#        uses: actions/upload-artifact@v3
-#        with: 
-#          name: artifacts
-#          path: |
-#            build
+      - name: Artifacts
+        uses: actions/upload-artifact@v3
+        with: 
+          name: artifacts
+          path: |
+            build
     
