@@ -6,7 +6,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps: 
       - name: get code
-      - uses: actions/checkout@v4
+        uses: actions/checkout@v4
 #      - name: install dependencies
 #      - run: |
 #          apt install wireguard-tools libgtk-3-dev libayatana-appindicator3-dev golang-go
