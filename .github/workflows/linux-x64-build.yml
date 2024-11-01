@@ -14,8 +14,12 @@ jobs:
       - name: Compile
         run: | 
           chmod +x ./*.sh
-          ./deps.sh
           ./package.sh
-          ./install.sh
-      
+#          ./install.sh
+#      - name: Artifacts
+#        uses: actions/upload-artifact@v3
+#        with: 
+#          name: artifacts
+#          path: |
+#            build
     
