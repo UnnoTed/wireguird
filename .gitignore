@@ -17,3 +17,7 @@
 ./wireguird
 ./wireguird.glade~
 ./wireguird.settings
+
+deb/
+build/
+static/*.go

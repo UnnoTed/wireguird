@@ -15,10 +15,10 @@ import (
 )
 
 const (
-	Version     = "1.1.0"
-	Repo        = "https://github.com/UnnoTed/wireguird"
-	TunnelsPath = "/etc/wireguard/"
-	IconPath    = "/opt/wireguird/Icon/"
+	Version            = "1.1.0"
+	Repo               = "https://github.com/UnnoTed/wireguird"
+	DefaultTunnelsPath = "/etc/wireguard/"
+	IconPath           = "/opt/wireguird/Icon/"
 )
 
 var (
@@ -31,6 +31,7 @@ var (
 	header         *gtk.HeaderBar
 	wgc            *wgctrl.Client
 	updateTicker   *time.Ticker
+	TunnelsPath    string
 )
 
 func Create(app *gtk.Application, b *gtk.Builder, w *gtk.ApplicationWindow, ind *appindicator.Indicator) error {

@@ -237,7 +237,7 @@ func (t *Tunnels) Create() error {
 					t.icons[d.Name].SetFromPixbuf(t.grayIcon.GetPixbuf())
 				})
 
-				c := exec.Command("wg-quick", "down", d.Name)
+				c := exec.Command("wg-quick", "down", TunnelsPath+d.Name+".conf")
 				output, err := c.Output()
 				if err != nil {
 					es := string(err.(*exec.ExitError).Stderr)
@@ -291,7 +291,7 @@ func (t *Tunnels) Create() error {
 			}
 
 			// connect to a tunnel
-			c := exec.Command("wg-quick", "up", name)
+			c := exec.Command("wg-quick", "up", TunnelsPath+name+".conf")
 			output, err := c.Output()
 			if err != nil {
 				es := string(err.(*exec.ExitError).Stderr)

@@ -1,3 +1,5 @@
+#!/usr/bin/env sh
+
 echo "wireguird: cleaning..."
 
 ARCH=${ARCH:-amd64}
@@ -14,17 +16,15 @@ fi
 mkdir -p "$opt_w_dir"
 
 echo "wireguird: building go binary..."
-time {
   go generate
   GOARCH=$ARCH go build -ldflags "-s -w" -trimpath -o "$opt_w_dir""wireguird"
-}
 
 echo "wireguird: copying icons..."
 cp -r ./Icon/ "$opt_w_dir"
 
 echo "wireguird: building deb package..."
 
-touch "$opt_w_dir""wireguird.settings"
+echo '{"MultipleTunnels":false,"StartOnTray":false,"CheckUpdates":false,"TunnelsPath":"/etc/wireguard","Debug":false}' > "$opt_w_dir""wireguird.settings"
 
 if [ ! -d "./build/" ]; then
   mkdir ./build/
