@@ -4,7 +4,8 @@ if [[ -f "/etc/os-release" ]]; then
         echo "not supported yet"
         #sudo rpm
     elif [[ "${ID}" == "ubuntu" ]]; then
-        sudo dpkg -i ./build/wireguird_amd64.deb
+        ARCH=${ARCH:-amd64}
+        sudo dpkg -i ./build/wireguird_${ARCH}.deb
     fi
 fi
 

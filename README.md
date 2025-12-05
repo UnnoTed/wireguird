@@ -36,6 +36,7 @@ sudo dpkg -i ./wireguird_amd64.deb
 
 deb dependencies: `wireguard-tools libgtk-3-dev libayatana-appindicator3-dev golang-go resolvconf`
 
+Using scripts:
 ```sh
 git clone https://github.com/UnnoTed/wireguird
 cd wireguird
@@ -44,3 +45,14 @@ chmod +x ./*.sh
 ./package.sh
 ./install.sh
 ```
+
+Using make (supports multicore compiling):
+```sh
+git clone https://github.com/UnnoTed/wireguird
+cd wireguird
+make deps
+make build
+make package
+make install
+```
+Or `make all` to run deps, build, and package (install separately).
