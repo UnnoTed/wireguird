@@ -1,6 +1,6 @@
 module github.com/UnnoTed/wireguird
 
-go 1.14
+go 1.21
 
 require (
 	github.com/UnnoTed/fileb0x v1.1.4 // indirect

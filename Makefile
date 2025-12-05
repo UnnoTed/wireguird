@@ -14,7 +14,7 @@ build:
 
 package:
 	cp -r ./Icon/ ./deb/opt/wireguird/
-	touch ./deb/opt/wireguird/wireguird.settings
+	echo '{"MultipleTunnels":false,"StartOnTray":false,"CheckUpdates":false,"TunnelsPath":"/etc/wireguard","Debug":false}' > ./deb/opt/wireguird/wireguird.settings
 	mkdir -p ./build/
 	sed -i "s/Architecture: .*/Architecture: $(ARCH)/" ./deb/DEBIAN/control
 	dpkg-deb --root-owner-group --build ./deb ./build/wireguird_$(ARCH).deb
