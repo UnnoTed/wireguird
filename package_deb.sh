@@ -1,6 +1,8 @@
 echo "wireguird: cleaning..."
 
-deb_file="./build/wireguird_amd64.deb"
+VERSION="1.1.0"
+
+deb_file="./build/wireguird_${VERSION}_amd64.deb"
 if [ -e "$deb_file" ]; then
   rm -r "$deb_file"
 fi
