@@ -12,18 +12,15 @@ import (
 const FilePath = "./wireguird.settings"
 
 type Settings struct {
-	MultipleTunnels bool
-	StartOnTray     bool
-	CheckUpdates    bool
-	Debug           bool
+	MultipleTunnels          bool
+	StartOnTray              bool
+	CheckUpdates             bool
+	Debug                    bool
+	RememberConnectedServers bool
+	ConnectedServers         map[string]int64
+	CountryFlags             bool
+	Passwordless             bool
 }
-
-var (
-	multipleTunnels *bool
-	checkUpdates    *bool
-	debug           *bool
-	tray            *bool
-)
 
 func (s *Settings) Init() error {
 	log.Debug().Msg("Settings init")

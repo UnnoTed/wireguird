@@ -7,7 +7,10 @@ import (
 	"time"
 
 	"github.com/UnnoTed/go-appindicator"
+	"github.com/UnnoTed/wireguird/gui/countries"
 	"github.com/UnnoTed/wireguird/gui/get"
+	"github.com/UnnoTed/wireguird/static"
+	"github.com/gotk3/gotk3/gdk"
 	"github.com/gotk3/gotk3/glib"
 	"github.com/gotk3/gotk3/gtk"
 	"github.com/rs/zerolog/log"
@@ -15,14 +18,15 @@ import (
 )
 
 const (
-	Version     = "1.1.0"
+	Version     = "1.2.0"
 	Repo        = "https://github.com/UnnoTed/wireguird"
 	TunnelsPath = "/etc/wireguard/"
-	IconPath    = "/opt/wireguird/Icon/"
+	IconPath    = "./Icon/"
 )
 
 var (
 	settingsWindow *gtk.Window
+	updateChecked  bool
 	editorWindow   *gtk.Window
 	application    *gtk.Application
 	indicator      *appindicator.Indicator
@@ -99,7 +103,27 @@ func Create(app *gtk.Application, b *gtk.Builder, w *gtk.ApplicationWindow, ind 
 		}()
 	}
 
+	if Settings.CountryFlags {
+		go func() {
+			if err := countries.OpenDatabase(); err != nil {
+				log.Error().Err(err).Msg("error getting country database")
+			}
+		}()
+	}
+
 	window.HideOnDelete()
+
+	icons := map[string]string{
+		"icon_delete": "Icon/delete.png",
+		"icon_tunnel": "Icon/add_tunnel.png",
+		"icon_zip":    "Icon/zip.png",
+	}
+
+	for name, path := range icons {
+		if err := loadGlobalEmbeddedImage(name, path); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -167,6 +191,12 @@ func createSettings(show bool) (*gtk.Window, error) {
 
 func updateCheck() error {
 	log.Info().Msg("Checking for updates")
+
+	// once per run
+	if updateChecked {
+		return nil
+	}
+
 	resp, err := http.Get("https://api.github.com/repos/UnnoTed/wireguird/releases")
 	if err != nil {
 		return err
@@ -197,5 +227,58 @@ func updateCheck() error {
 		}
 	}
 
+	updateChecked = true
+	return nil
+}
+
+func loadEmbeddedImage(path string) (*gtk.Image, error) {
+	data, err := static.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	loader, err := gdk.PixbufLoaderNew()
+	if err != nil {
+		return nil, err
+	}
+
+	loader.Write(data)
+	loader.Close()
+
+	pixbuf, err := loader.GetPixbuf()
+	if err != nil {
+		return nil, err
+	}
+
+	log.Debug().Str("path", path).Msg("loaded embedded image")
+	return gtk.ImageNewFromPixbuf(pixbuf)
+}
+
+func loadGlobalEmbeddedImage(id string, path string) error {
+	data, err := static.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	loader, err := gdk.PixbufLoaderNew()
+	if err != nil {
+		return err
+	}
+
+	loader.Write(data)
+	loader.Close()
+
+	pixbuf, err := loader.GetPixbuf()
+	if err != nil {
+		return err
+	}
+
+	img, err := get.Image(id)
+	if err != nil {
+		return err
+	}
+
+	img.SetFromPixbuf(pixbuf)
+	log.Debug().Str("path", path).Msg("loaded global embedded image")
 	return nil
 }

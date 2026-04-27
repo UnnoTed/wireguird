@@ -1,3 +1,12 @@
+wireguird (1.2) UNRELEASED; urgency=medium
+
+  * Add new setting to show country flags on tunnel names
+  * Change distribution packaging
+  * Update checks run once per run
+  * Add new setting to auto-reconnect on start
+
+ -- unknown <unknown@unknown>  Sat, 26 Apr 2026 15:50:00 +0100
+
 wireguird (1.1) UNRELEASED; urgency=medium
 
   * Add ability to import multiple config files at once (zip archive)

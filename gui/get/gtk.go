@@ -246,6 +246,20 @@ func Entry(name string) (*gtk.Entry, error) {
 	return entry1, nil
 }
 
+func Image(name string) (*gtk.Image, error) {
+	obj, err := Builder.GetObject(name)
+	if err != nil {
+		return nil, err
+	}
+
+	image1, ok := obj.(*gtk.Image)
+	if !ok {
+		return nil, errors.New("cant get *gtk.Image: " + name)
+	}
+
+	return image1, nil
+}
+
 func Label(name string) (*gtk.Label, error) {
 	obj, err := Builder.GetObject(name)
 	if err != nil {

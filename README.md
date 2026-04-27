@@ -34,13 +34,11 @@ sudo dpkg -i ./wireguird_amd64.deb
 
 ## Compile
 
-deb dependencies: `wireguard-tools libgtk-3-dev libayatana-appindicator3-dev golang-go resolvconf`
+deb dependencies: `sudo apt install wireguard-tools libgtk-3-dev libayatana-appindicator3-dev golang-go resolvconf`
 
 ```sh
 git clone https://github.com/UnnoTed/wireguird
 cd wireguird
-chmod +x ./*.sh
-./deps.sh
-./package.sh
-./install.sh
+go install github.com/goreleaser/goreleaser/v2@latest
+goreleaser release --snapshot --clean
 ```

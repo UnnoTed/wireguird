@@ -2,9 +2,12 @@ package gui
 
 import (
 	"archive/zip"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,6 +20,8 @@ import (
 	"github.com/ungerik/go-dry"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 
+	"github.com/UnnoTed/wireguird/gui/countries"
+	"github.com/UnnoTed/wireguird/gui/endpoints"
 	"github.com/UnnoTed/wireguird/gui/get"
 	"github.com/UnnoTed/wireguird/settings"
 	"github.com/dustin/go-humanize"
@@ -56,16 +61,20 @@ type Tunnels struct {
 	}
 
 	Settings struct {
-		MultipleTunnels *gtk.CheckButton
-		StartOnTray     *gtk.CheckButton
-		CheckUpdates    *gtk.CheckButton
+		MultipleTunnels          *gtk.CheckButton
+		StartOnTray              *gtk.CheckButton
+		CheckUpdates             *gtk.CheckButton
+		CountryFlags             *gtk.CheckButton
+		RememberConnectedServers *gtk.CheckButton
+		Passwordless             *gtk.CheckButton
 	}
 
 	ButtonChangeState *gtk.Button
 	icons             map[string]*gtk.Image
 	ticker            *time.Ticker
 
-	lastSelected string
+	lastSelected                 string
+	reconnectedRememberedServers bool
 
 	grayIcon  *gtk.Image
 	greenIcon *gtk.Image
@@ -76,12 +85,12 @@ func (t *Tunnels) Create() error {
 	t.ticker = time.NewTicker(1 * time.Second)
 
 	var err error
-	t.grayIcon, err = gtk.ImageNewFromFile(IconPath + "not_connected.png")
+	t.grayIcon, err = loadEmbeddedImage(IconPath + "not_connected.png")
 	if err != nil {
 		return err
 	}
 
-	t.greenIcon, err = gtk.ImageNewFromFile(IconPath + "connected.png")
+	t.greenIcon, err = loadEmbeddedImage(IconPath + "connected.png")
 	if err != nil {
 		return err
 	}
@@ -207,122 +216,7 @@ func (t *Tunnels) Create() error {
 	}
 
 	t.ButtonChangeState.Connect("clicked", func() {
-		err := func() error {
-			list, err := wgc.Devices()
-			if err != nil {
-				return err
-			}
-
-			activeNames := t.ActiveDeviceName()
-			row := tl.GetSelectedRow()
-			// row not found for config
-			if row == nil {
-				return nil
-			}
-
-			// conf name
-			name, err := row.GetName()
-			if err != nil {
-				return err
-			}
-
-			// https://github.com/UnnoTed/wireguird/issues/11#issuecomment-1332047191
-			if len(name) >= 16 {
-				ShowError(window, errors.New("Tunnel's file name is too long ("+strconv.Itoa(len(name))+"), max length: 15"))
-			}
-
-			// disconnect from given tunnel
-			dc := func(d *wgtypes.Device) error {
-				glib.IdleAdd(func() {
-					t.icons[d.Name].SetFromPixbuf(t.grayIcon.GetPixbuf())
-				})
-
-				c := exec.Command("wg-quick", "down", d.Name)
-				output, err := c.Output()
-				if err != nil {
-					es := string(err.(*exec.ExitError).Stderr)
-					log.Error().Err(err).Str("output", string(output)).Str("error", es).Msg("wg-quick down error")
-
-					oerr := err.Error() + "\nwg-quick's output:\n" + es
-					wlog("ERROR", oerr)
-					return errors.New(oerr)
-				}
-
-				indicator.SetIcon("wireguard_off")
-				return wlog("INFO", "Disconnected from "+d.Name)
-			}
-
-			// disconnects from all tunnels before connecting to a new one
-			// when the multipleTunnels option is disabled
-			if Settings.MultipleTunnels {
-				log.Info().Str("name", name).Msg("NAME")
-				d, err := wgc.Device(name)
-				if err != nil && !errors.Is(err, os.ErrNotExist) {
-					return err
-				}
-
-				if !errors.Is(err, os.ErrNotExist) {
-					if err := dc(d); err != nil {
-						return err
-					}
-				}
-
-			} else {
-				for _, d := range list {
-					if err := dc(d); err != nil {
-						return err
-					}
-				}
-			}
-
-			// dont connect to the new one as this is a disconnect action
-			if dry.StringListContains(activeNames, name) {
-				t.UpdateRow(row)
-
-				glib.IdleAdd(func() {
-					if len(activeNames) == 1 {
-						header.SetSubtitle("Not connected!")
-					} else {
-						activeNames := t.ActiveDeviceName()
-						header.SetSubtitle("Connected to " + strings.Join(activeNames, ", "))
-					}
-				})
-				return nil
-			}
-
-			// connect to a tunnel
-			c := exec.Command("wg-quick", "up", name)
-			output, err := c.Output()
-			if err != nil {
-				es := string(err.(*exec.ExitError).Stderr)
-				log.Error().Err(err).Str("output", string(output)).Str("error", es).Msg("wg-quick up error")
-
-				oerr := err.Error() + "\nwg-quick's output:\n" + es
-				wlog("ERROR", oerr)
-				return errors.New(oerr)
-			}
-
-			// update header label with tunnel names
-			glib.IdleAdd(func() {
-				activeNames := t.ActiveDeviceName()
-				header.SetSubtitle("Connected to " + strings.Join(activeNames, ", "))
-			})
-
-			// set icon to connected for the tunnel's row
-			glib.IdleAdd(func() {
-				t.icons[name].SetFromPixbuf(t.greenIcon.GetPixbuf())
-				t.UpdateRow(row)
-				indicator.SetIcon("wg_connected")
-			})
-
-			if err := wlog("INFO", "Connected to "+name); err != nil {
-				return err
-			}
-
-			return nil
-		}()
-
-		if err != nil {
+		if err = t.Connect(tl.GetSelectedRow(), ""); err != nil {
 			ShowError(window, err)
 		}
 	})
@@ -793,6 +687,8 @@ func (t *Tunnels) Create() error {
 	}
 
 	btnSettingsSave.Connect("clicked", func() {
+		prevCountryFlags := Settings.CountryFlags
+
 		err := func() error {
 			t.ToSettings()
 			Settings.Save()
@@ -803,6 +699,24 @@ func (t *Tunnels) Create() error {
 
 		if err != nil {
 			ShowError(window, err, "settings save error")
+		}
+
+		// only download country database when previously disabled and now enabled
+		if !prevCountryFlags && Settings.CountryFlags {
+			go func() {
+				err := countries.OpenDatabase()
+				if err != nil {
+					ShowError(window, err, "download country database error")
+				}
+			}()
+		}
+
+		if err := t.SetPasswordless(); err != nil {
+			ShowError(window, err, "set passwordless error")
+		}
+
+		if err := t.ScanTunnels(); err != nil {
+			ShowError(window, err, "scan tunnels error")
 		}
 	})
 
@@ -908,6 +822,18 @@ func (t *Tunnels) Create() error {
 		}
 	}()
 
+	go func() {
+		if Settings.RememberConnectedServers && Settings.ConnectedServers != nil && len(Settings.ConnectedServers) > 0 {
+			for tunnel := range Settings.ConnectedServers {
+				if err := t.Connect(nil, tunnel); err != nil {
+					log.Error().Err(err).Str("tunnel", tunnel).Msg("error connecting to tunnel")
+					wlog("ERROR", "error connecting to tunnel")
+				}
+			}
+		}
+
+		t.reconnectedRememberedServers = true
+	}()
 	return nil
 }
 
@@ -915,6 +841,9 @@ func (t *Tunnels) ToSettings() {
 	Settings.MultipleTunnels = t.Settings.MultipleTunnels.GetActive()
 	Settings.StartOnTray = t.Settings.StartOnTray.GetActive()
 	Settings.CheckUpdates = t.Settings.CheckUpdates.GetActive()
+	Settings.CountryFlags = t.Settings.CountryFlags.GetActive()
+	Settings.RememberConnectedServers = t.Settings.RememberConnectedServers.GetActive()
+	Settings.Passwordless = t.Settings.Passwordless.GetActive()
 }
 
 func (t *Tunnels) FromSettings() error {
@@ -940,6 +869,27 @@ func (t *Tunnels) FromSettings() error {
 		return err
 	}
 	t.Settings.CheckUpdates.SetActive(Settings.CheckUpdates)
+
+	// checkbox: country flags
+	t.Settings.CountryFlags, err = get.CheckButton("settings_country_flags")
+	if err != nil {
+		return err
+	}
+	t.Settings.CountryFlags.SetActive(Settings.CountryFlags)
+
+	// checkbox: remember connected servers
+	t.Settings.RememberConnectedServers, err = get.CheckButton("settings_remember_connected")
+	if err != nil {
+		return err
+	}
+	t.Settings.RememberConnectedServers.SetActive(Settings.RememberConnectedServers)
+
+	// checkbox: passwordless
+	t.Settings.Passwordless, err = get.CheckButton("settings_polkit_policy")
+	if err != nil {
+		return err
+	}
+	t.Settings.Passwordless.SetActive(Settings.Passwordless)
 
 	return nil
 }
@@ -1028,13 +978,17 @@ func (t *Tunnels) ScanTunnels() error {
 		// showError(err)
 		return err
 	}
+	configByName := map[string]string{}
 
 	for _, fileName := range list {
 		if !strings.HasSuffix(fileName, ".conf") {
 			continue
 		}
 
-		configList = append(configList, strings.TrimSuffix(fileName, ".conf"))
+		name := strings.TrimSuffix(fileName, ".conf")
+		configByName[name] = TunnelsPath + fileName
+
+		configList = append(configList, name)
 	}
 
 	tl, err := get.ListBox("tunnel_list")
@@ -1056,7 +1010,11 @@ func (t *Tunnels) ScanTunnels() error {
 	})
 
 	activeNames := t.ActiveDeviceName()
-	header.SetSubtitle("Connected to " + strings.Join(activeNames, ", "))
+	if len(activeNames) > 0 {
+		header.SetSubtitle("Connected to " + strings.Join(activeNames, ", "))
+	} else {
+		header.SetSubtitle("No active tunnels")
+	}
 
 	lasti := len(configList) - 1
 	for i, name := range configList {
@@ -1097,6 +1055,82 @@ func (t *Tunnels) ScanTunnels() error {
 		img.SetVExpand(false)
 		img.SetHExpand(false)
 
+		var country *gtk.Image
+		if Settings.CountryFlags {
+			cfg, err := ini.Load(configByName[name])
+			if err != nil {
+				return err
+			}
+
+			peersec := cfg.Section("Peer")
+
+			nothing, err := loadEmbeddedImage("./flags/IDK.png")
+			if err != nil {
+				return err
+			}
+			country = nothing
+			country.SetVAlign(gtk.ALIGN_CENTER)
+			country.SetHAlign(gtk.ALIGN_START)
+			country.SetSizeRequest(10, 10)
+			country.SetVExpand(false)
+			country.SetHExpand(false)
+
+			go func() {
+				err := func() error {
+					endpoint := strings.Split(peersec.Key("Endpoint").String(), ":")[0]
+					log.Debug().Str("endpoint", endpoint).Msg("checking country flag for tunnel")
+
+					ip := ""
+					switch endpoints.Categorize(endpoint) {
+					case endpoints.IPV4, endpoints.IPV6:
+						ip = endpoint
+					case endpoints.FQDN:
+						ips, err := net.LookupIP(endpoint)
+						if err != nil {
+							log.Error().Err(err).Str("endpoint", endpoint).Msg("dns lookup error")
+							return err
+						}
+
+						if len(ips) > 0 {
+							ip = ips[0].String()
+						} else {
+							return errors.New("endpoint \"" + endpoint + "\" coudln't find ip from dns")
+						}
+					default:
+						return errors.New("endpoint \"" + endpoint + "\" is invalid")
+					}
+
+					log.Debug().Str("endpoint", endpoint).Str("ip", ip).Msg("found ip for tunnel endpoint")
+
+					countryCode, err := countries.Find(ip)
+					if err != nil {
+						log.Error().Err(err).Msg("find country error")
+						return err
+					}
+
+					log.Debug().Str("country", countryCode).Str("ip", ip).Msg("found country for tunnel")
+
+					flag, err := loadEmbeddedImage("./flags/" + countryCode + ".png")
+					if err != nil {
+						log.Error().Err(err).Str("country", countryCode).Str("ip", ip).Msg("error loading embedded image")
+						return err
+					}
+
+					// prevents crash when deleting servers
+					glib.IdleAdd(func() {
+						if country != nil && country.GetPixbuf() != nil {
+							country.SetFromPixbuf(flag.GetPixbuf())
+						}
+					})
+					return nil
+				}()
+				if err != nil {
+					log.Error().Err(err).Msg("country flag error")
+					wlog("ERROR", "country flag error: "+err.Error())
+				}
+			}()
+		}
+
 		label, err := gtk.LabelNew(name)
 		if err != nil {
 			return err
@@ -1114,6 +1148,11 @@ func (t *Tunnels) ScanTunnels() error {
 		}
 
 		box.Add(img)
+
+		if Settings.CountryFlags {
+			box.Add(country)
+		}
+
 		box.Add(label)
 
 		row.SetName(name)
@@ -1169,6 +1208,170 @@ func (t *Tunnels) ActiveDeviceName() []string {
 	}
 
 	return names
+}
+
+func (t *Tunnels) Connect(row *gtk.ListBoxRow, name string) error {
+	list, err := wgc.Devices()
+	if err != nil {
+		return err
+	}
+
+	activeNames := t.ActiveDeviceName()
+	if row != nil && name == "" {
+		// conf name
+		name, err = row.GetName()
+		if err != nil {
+			return err
+		}
+	}
+
+	// https://github.com/UnnoTed/wireguird/issues/11#issuecomment-1332047191
+	if len(name) >= 16 {
+		ShowError(window, errors.New("Tunnel's file name is too long ("+strconv.Itoa(len(name))+"), max length: 15"))
+	}
+
+	// disconnect from given tunnel
+	dc := func(d *wgtypes.Device) error {
+		glib.IdleAdd(func() {
+			t.icons[d.Name].SetFromPixbuf(t.grayIcon.GetPixbuf())
+		})
+
+		c := exec.Command("wg-quick", "down", d.Name)
+		output, err := c.Output()
+		if err != nil {
+			es := string(err.(*exec.ExitError).Stderr)
+			log.Error().Err(err).Str("output", string(output)).Str("error", es).Msg("wg-quick down error")
+
+			oerr := err.Error() + "\nwg-quick's output:\n" + es
+			wlog("ERROR", oerr)
+			return errors.New(oerr)
+		}
+
+		if Settings.RememberConnectedServers && Settings.ConnectedServers != nil && len(Settings.ConnectedServers) > 0 && t.reconnectedRememberedServers {
+			delete(Settings.ConnectedServers, d.Name)
+			if err := Settings.Save(); err != nil {
+				log.Error().Err(err).Msg("Error saving settings on disconnect")
+				wlog("INFO", "Error saving settings on disconnect: "+err.Error())
+			}
+		}
+
+		indicator.SetIcon("wireguard_off")
+		return wlog("INFO", "Disconnected from "+d.Name)
+	}
+
+	// disconnects from all tunnels before connecting to a new one
+	// when the multipleTunnels option is disabled
+	if Settings.MultipleTunnels {
+		log.Info().Str("name", name).Msg("NAME")
+		d, err := wgc.Device(name)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+
+		if !errors.Is(err, os.ErrNotExist) {
+			if err := dc(d); err != nil {
+				return err
+			}
+		}
+
+	} else {
+		for _, d := range list {
+			if err := dc(d); err != nil {
+				return err
+			}
+		}
+	}
+
+	// dont connect to the new one as this is a disconnect action
+	if dry.StringListContains(activeNames, name) {
+		t.UpdateRow(row)
+
+		glib.IdleAdd(func() {
+			if len(activeNames) == 1 {
+				header.SetSubtitle("Not connected!")
+			} else {
+				activeNames := t.ActiveDeviceName()
+				header.SetSubtitle("Connected to " + strings.Join(activeNames, ", "))
+			}
+		})
+		return nil
+	}
+
+	// connect to a tunnel
+	c := exec.Command("wg-quick", "up", name)
+	output, err := c.Output()
+	if err != nil {
+		es := string(err.(*exec.ExitError).Stderr)
+		log.Error().Err(err).Str("output", string(output)).Str("error", es).Msg("wg-quick up error")
+
+		oerr := err.Error() + "\nwg-quick's output:\n" + es
+		wlog("ERROR", oerr)
+		return errors.New(oerr)
+	}
+
+	if Settings.RememberConnectedServers {
+		// using time because order may be important
+		if Settings.ConnectedServers == nil {
+			Settings.ConnectedServers = map[string]int64{}
+		}
+
+		Settings.ConnectedServers[name] = time.Now().Unix()
+		if err := Settings.Save(); err != nil {
+			log.Error().Err(err).Msg("Error saving settings on connect")
+		}
+	}
+
+	// update header label with tunnel names
+	glib.IdleAdd(func() {
+		activeNames := t.ActiveDeviceName()
+		header.SetSubtitle("Connected to " + strings.Join(activeNames, ", "))
+	})
+
+	// set icon to connected for the tunnel's row
+	glib.IdleAdd(func() {
+		t.icons[name].SetFromPixbuf(t.greenIcon.GetPixbuf())
+		t.UpdateRow(row)
+		indicator.SetIcon("wg_connected")
+	})
+
+	if err := wlog("INFO", "Connected to "+name); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (t *Tunnels) SetPasswordless() error {
+	// not installed
+	if !dry.FileExists("/usr/share/polkit-1/actions/wireguird.policy") {
+		return nil
+	}
+
+	content, err := ioutil.ReadFile("/usr/share/polkit-1/actions/wireguird.policy")
+	if err != nil {
+		return err
+	}
+
+	changed := false
+	if Settings.Passwordless && bytes.Contains(content, []byte("<allow_any>auth_admin</allow_any>")) {
+		content = bytes.Replace(content, []byte("<allow_any>auth_admin</allow_any>"), []byte("<allow_any>yes</allow_any>"), 1)
+		content = bytes.Replace(content, []byte("<allow_inactive>auth_admin</allow_inactive>"), []byte("<allow_inactive>yes</allow_inactive>"), 1)
+		content = bytes.Replace(content, []byte("<allow_active>auth_admin_keep</allow_active>"), []byte("<allow_active>yes</allow_active>"), 1)
+		changed = true
+	} else if !Settings.Passwordless && bytes.Contains(content, []byte("<allow_any>yes</allow_any>")) {
+		content = bytes.Replace(content, []byte("<allow_any>yes</allow_any>"), []byte("<allow_any>auth_admin</allow_any>"), 1)
+		content = bytes.Replace(content, []byte("<allow_inactive>yes</allow_inactive>"), []byte("<allow_inactive>auth_admin</allow_inactive>"), 1)
+		content = bytes.Replace(content, []byte("<allow_active>yes</allow_active>"), []byte("<allow_active>auth_admin_keep</allow_active>"), 1)
+		changed = true
+	}
+
+	if changed {
+		if err := ioutil.WriteFile("/usr/share/polkit-1/actions/wireguird.policy", content, 0644); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func wlog(t string, text string) error {

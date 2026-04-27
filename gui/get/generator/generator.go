@@ -27,6 +27,7 @@ func main() {
 		"Switch",
 		"Window",
 		"Entry",
+		"Image",
 		"Label",
 		"Stack",
 		"Box",

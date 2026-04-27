@@ -116,7 +116,7 @@ debug = false
 # type: array of objects
 [[custom]]
   # type: array of strings
-  files = ["*.glade"]
+  files = ["*.glade", "./Icon/", "./flags/"]
 
   # base is the path that will be removed from all files' path
   # type: string

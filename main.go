@@ -3,11 +3,14 @@
 package main
 
 import (
+	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/UnnoTed/go-appindicator"
 	"github.com/UnnoTed/horizontal"
 	"github.com/UnnoTed/wireguird/gui"
+	"github.com/UnnoTed/wireguird/gui/countries"
 	"github.com/UnnoTed/wireguird/static"
 	"github.com/gotk3/gotk3/gdk"
 	"github.com/gotk3/gotk3/glib"
@@ -15,9 +18,31 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+var iconTmpDir = os.TempDir()
 var win *gtk.ApplicationWindow
 
 func main() {
+	if os.Geteuid() != 0 {
+		fmt.Println("\n\n\n\n")
+		fmt.Println("===========================================================================")
+		fmt.Println("===========================================================================")
+		fmt.Println("===========================================================================")
+		fmt.Println("===                                                                     ===")
+		fmt.Println("===                                                                     ===")
+		fmt.Println("=== Wireguird must be ran as root to access /etc/wireguard and wg-quick ===")
+		fmt.Println("=== Use pkexec to run as root:                                          ===")
+		fmt.Println("===  pkexec wireguird                                                   ===")
+		fmt.Println("===                                                                     ===")
+		fmt.Println("===                                                                     ===")
+		fmt.Println("===========================================================================")
+		fmt.Println("===========================================================================")
+		fmt.Println("===========================================================================")
+		return
+	}
+
+	defer os.Remove(iconTmpDir)
+	defer countries.CloseDatabase()
+
 	log.Logger = log.Output(horizontal.ConsoleWriter{Out: os.Stderr})
 	log.Info().Uint("major", gtk.GetMajorVersion()).Uint("minor", gtk.GetMinorVersion()).Uint("micro", gtk.GetMicroVersion()).Msg("GTK Version")
 
@@ -57,8 +82,23 @@ func createTray(application *gtk.Application) (*appindicator.Indicator, error) {
 		return nil, err
 	}
 
+	icons := []string{"wireguard_off", "wg_connected"}
+	for _, icon := range icons {
+		iconBytes, err := static.ReadFile("./Icon/" + icon + ".png")
+		if err != nil {
+			log.Error().Err(err).Str("icon", icon).Msg("Error reading embedded icon")
+			return nil, err
+		}
+
+		iconPath := filepath.Join(iconTmpDir, icon+".png")
+		if err := os.WriteFile(iconPath, iconBytes, 0644); err != nil {
+			log.Error().Err(err).Str("icon", icon).Msg("Failed to write temp icon")
+			return nil, err
+		}
+	}
+
 	indicator := appindicator.New(application.GetApplicationID(), "wireguard_off", appindicator.CategoryApplicationStatus)
-	indicator.SetIconThemePath("/opt/wireguird/Icon")
+	indicator.SetIconThemePath(iconTmpDir)
 	indicator.SetTitle("Wireguird")
 	// indicator.SetLabel("Wireguird", "")
 	indicator.SetStatus(appindicator.StatusActive)
