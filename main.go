@@ -82,23 +82,27 @@ func createTray(application *gtk.Application) (*appindicator.Indicator, error) {
 		return nil, err
 	}
 
-	icons := []string{"wireguard_off", "wg_connected"}
-	for _, icon := range icons {
-		iconBytes, err := static.ReadFile("./Icon/" + icon + ".png")
-		if err != nil {
-			log.Error().Err(err).Str("icon", icon).Msg("Error reading embedded icon")
-			return nil, err
-		}
+	iconsDir := "/usr/share/wireguird/Icon/"
+	if _, err := os.Stat(iconsDir); os.IsNotExist(err) {
+		iconsDir = iconTmpDir
+		icons := []string{"wireguard_off", "wg_connected"}
+		for _, icon := range icons {
+			iconBytes, err := static.ReadFile("./Icon/" + icon + ".png")
+			if err != nil {
+				log.Error().Err(err).Str("icon", icon).Msg("Error reading embedded icon")
+				return nil, err
+			}
 
-		iconPath := filepath.Join(iconTmpDir, icon+".png")
-		if err := os.WriteFile(iconPath, iconBytes, 0644); err != nil {
-			log.Error().Err(err).Str("icon", icon).Msg("Failed to write temp icon")
-			return nil, err
+			iconPath := filepath.Join(iconTmpDir, icon+".png")
+			if err := os.WriteFile(iconPath, iconBytes, 0644); err != nil {
+				log.Error().Err(err).Str("icon", icon).Msg("Failed to write temp icon")
+				return nil, err
+			}
 		}
 	}
 
 	indicator := appindicator.New(application.GetApplicationID(), "wireguard_off", appindicator.CategoryApplicationStatus)
-	indicator.SetIconThemePath(iconTmpDir)
+	indicator.SetIconThemePath(iconsDir)
 	indicator.SetTitle("Wireguird")
 	// indicator.SetLabel("Wireguird", "")
 	indicator.SetStatus(appindicator.StatusActive)
