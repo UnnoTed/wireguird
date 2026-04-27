@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -67,11 +66,25 @@ type Tunnels struct {
 	ticker            *time.Ticker
 
 	lastSelected string
+
+	grayIcon  *gtk.Image
+	greenIcon *gtk.Image
 }
 
 func (t *Tunnels) Create() error {
 	t.icons = map[string]*gtk.Image{}
 	t.ticker = time.NewTicker(1 * time.Second)
+
+	var err error
+	t.grayIcon, err = gtk.ImageNewFromFile(IconPath + "not_connected.png")
+	if err != nil {
+		return err
+	}
+
+	t.greenIcon, err = gtk.ImageNewFromFile(IconPath + "connected.png")
+	if err != nil {
+		return err
+	}
 
 	tl, err := get.ListBox("tunnel_list")
 	if err != nil {
@@ -220,13 +233,8 @@ func (t *Tunnels) Create() error {
 
 			// disconnect from given tunnel
 			dc := func(d *wgtypes.Device) error {
-				gray, err := gtk.ImageNewFromFile(IconPath + "not_connected.png")
-				if err != nil {
-					return err
-				}
-
 				glib.IdleAdd(func() {
-					t.icons[d.Name].SetFromPixbuf(gray.GetPixbuf())
+					t.icons[d.Name].SetFromPixbuf(t.grayIcon.GetPixbuf())
 				})
 
 				c := exec.Command("wg-quick", "down", d.Name)
@@ -294,24 +302,15 @@ func (t *Tunnels) Create() error {
 				return errors.New(oerr)
 			}
 
-			if err != nil {
-				return err
-			}
-
 			// update header label with tunnel names
 			glib.IdleAdd(func() {
 				activeNames := t.ActiveDeviceName()
 				header.SetSubtitle("Connected to " + strings.Join(activeNames, ", "))
 			})
 
-			green, err := gtk.ImageNewFromFile(IconPath + "connected.png")
-			if err != nil {
-				return err
-			}
-
 			// set icon to connected for the tunnel's row
 			glib.IdleAdd(func() {
-				t.icons[name].SetFromPixbuf(green.GetPixbuf())
+				t.icons[name].SetFromPixbuf(t.greenIcon.GetPixbuf())
 				t.UpdateRow(row)
 				indicator.SetIcon("wg_connected")
 			})
@@ -380,12 +379,12 @@ func (t *Tunnels) Create() error {
 						continue
 					}
 
-					data, err := ioutil.ReadFile(fname)
+					data, err := os.ReadFile(fname)
 					if err != nil {
 						return err
 					}
 
-					err = ioutil.WriteFile(filepath.Join(TunnelsPath, filepath.Base(fname)), data, 666)
+					err = os.WriteFile(filepath.Join(TunnelsPath, filepath.Base(fname)), data, 666)
 					if err != nil {
 						return err
 					}
@@ -606,7 +605,7 @@ func (t *Tunnels) Create() error {
 				return err
 			}
 
-			data, err := ioutil.ReadFile(path)
+			data, err := os.ReadFile(path)
 			if err != nil {
 				return err
 			}
@@ -765,7 +764,7 @@ func (t *Tunnels) Create() error {
 			}
 
 			// write changes
-			if err := ioutil.WriteFile(path, []byte(data), 666); err != nil {
+			if err := os.WriteFile(path, []byte(data), 666); err != nil {
 				return err
 			}
 
@@ -834,9 +833,35 @@ func (t *Tunnels) Create() error {
 		for {
 			<-t.ticker.C
 
-			if !window.HasToplevelFocus() {
+			// update tray icon
+			activeNames := t.ActiveDeviceName()
+			if len(activeNames) == 0 {
+				indicator.SetIcon("wireguard_off")
+			} else {
+				indicator.SetIcon("wg_connected")
+			}
+
+			if !window.IsVisible() {
 				continue
 			}
+
+			glib.IdleAdd(func() {
+				// update list icons
+				for name := range t.icons {
+					if dry.StringListContains(activeNames, name) {
+						t.icons[name].SetFromPixbuf(t.greenIcon.GetPixbuf())
+					} else {
+						t.icons[name].SetFromPixbuf(t.grayIcon.GetPixbuf())
+					}
+				}
+
+				// update header label with tunnel names
+				if len(activeNames) == 0 {
+					header.SetSubtitle("Not connected!")
+				} else {
+					header.SetSubtitle("Connected to " + strings.Join(activeNames, ", "))
+				}
+			})
 
 			row := tl.GetSelectedRow()
 			if row == nil {
@@ -850,7 +875,15 @@ func (t *Tunnels) Create() error {
 				continue
 			}
 
-			if !dry.StringListContains(t.ActiveDeviceName(), name) {
+			if !dry.StringListContains(activeNames, name) {
+				glib.IdleAdd(func() {
+					t.Interface.Status.SetText("Inactive")
+					t.Interface.PublicKey.SetText("unknown")
+					t.Interface.ListenPort.SetText("unknown")
+					t.ButtonChangeState.SetLabel("Activate")
+					t.Peer.LatestHandshake.SetText("unknown")
+					t.Peer.Transfer.SetText("unknown")
+				})
 				continue
 			}
 
@@ -860,16 +893,18 @@ func (t *Tunnels) Create() error {
 				continue
 			}
 
-			t.Interface.PublicKey.SetText(d.PublicKey.String())
-			t.Interface.ListenPort.SetText(strconv.Itoa(d.ListenPort))
+			glib.IdleAdd(func() {
+				t.Interface.Status.SetText("Active")
+				t.Interface.PublicKey.SetText(d.PublicKey.String())
+				t.Interface.ListenPort.SetText(strconv.Itoa(d.ListenPort))
+				t.ButtonChangeState.SetLabel("Deactivate")
 
-			for _, p := range d.Peers {
-				hs := humanize.Time(p.LastHandshakeTime)
-				glib.IdleAdd(func() {
+				for _, p := range d.Peers {
+					hs := humanize.Time(p.LastHandshakeTime)
 					t.Peer.LatestHandshake.SetText(hs)
 					t.Peer.Transfer.SetText(humanize.Bytes(uint64(p.ReceiveBytes)) + " received, " + humanize.Bytes(uint64(p.TransmitBytes)) + " sent")
-				})
-			}
+				}
+			})
 		}
 	}()
 
@@ -1041,14 +1076,13 @@ func (t *Tunnels) ScanTunnels() error {
 		var img *gtk.Image
 
 		if dry.StringListContains(activeNames, name) {
-			green, err := gtk.ImageNewFromFile(IconPath + "connected.png")
+			green, err := gtk.ImageNewFromPixbuf(t.greenIcon.GetPixbuf())
 			if err != nil {
 				return err
 			}
-
 			img = green
 		} else {
-			gray, err := gtk.ImageNewFromFile(IconPath + "not_connected.png")
+			gray, err := gtk.ImageNewFromPixbuf(t.grayIcon.GetPixbuf())
 			if err != nil {
 				return err
 			}
@@ -1180,12 +1214,12 @@ func parseZipArchive(target string) error {
 			}
 			defer fr.Close()
 
-			data, err := ioutil.ReadAll(fr)
+			data, err := io.ReadAll(fr)
 			if err != nil {
 				return err
 			}
 
-			err = ioutil.WriteFile(filepath.Join(TunnelsPath, f.FileInfo().Name()), data, 666)
+			err = os.WriteFile(filepath.Join(TunnelsPath, f.FileInfo().Name()), data, 666)
 			if err != nil {
 				return err
 			}
