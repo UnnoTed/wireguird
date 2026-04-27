@@ -17,3 +17,6 @@
 ./wireguird
 ./wireguird.glade~
 ./wireguird.settings
+./countries.mmdb
+static/
+dist/

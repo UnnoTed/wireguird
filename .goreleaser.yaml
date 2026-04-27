@@ -1,0 +1,78 @@
+version: 2
+project_name: wireguird
+
+before:
+  hooks:
+    - go generate ./...
+
+builds:
+  - id: wireguird
+    main: ./main.go
+    binary: wireguird
+    env:
+      - CGO_ENABLED=1
+    goos: [linux]
+    goarch: [amd64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - src: ./deb/usr/share/applications/wireguird.desktop
+        dst: /usr/share/applications/wireguird.desktop
+      - src: ./deb/usr/share/polkit-1/actions/wireguird.policy
+        dst: /usr/share/polkit-1/actions/wireguird.policy
+      # - src: ./deb/usr/local/bin/wireguird
+        # dst: /usr/local/bin/wireguird
+      - src: ./Icon/**/*
+        dst: /usr/share/wireguird/Icon/
+
+nfpms:
+  - id: debian_family
+    package_name: wireguird
+    vendor: "UnnoTed"
+    maintainer: "UnnoTed"
+    description: "GTK GUI for Wireguard"
+    license: "MIT"
+    homepage: "https://github.com/UnnoTed/wireguird"
+    formats: [deb]
+    bindir: /usr/bin
+    dependencies:
+      - wireguard-tools
+      - resolvconf
+      - libayatana-appindicator3-1
+    contents: &app_contents
+      - src: ./deb/usr/share/applications/wireguird.desktop
+        dst: /usr/share/applications/wireguird.desktop
+      - src: ./deb/usr/share/polkit-1/actions/wireguird.policy
+        dst: /usr/share/polkit-1/actions/wireguird.policy
+        file_info:
+          mode: 0644
+      # - src: ./deb/usr/local/bin/wireguird
+        # dst: /usr/local/bin/wireguird
+      - src: ./Icon/
+        dst: /usr/share/wireguird/Icon/
+        type: tree
+
+  - id: fedora_family
+    package_name: wireguird
+    vendor: "UnnoTed"
+    maintainer: "UnnoTed"
+    description: "GTK GUI for Wireguard"
+    license: "MIT"
+    homepage: "https://github.com/UnnoTed/wireguird"
+    formats: [rpm]
+    bindir: /usr/bin
+    dependencies:
+      - wireguard-tools
+      - libappindicator-gtk3
+    contents: *app_contents
+
+release:
+  prerelease: auto
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"

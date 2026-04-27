@@ -1,8 +1,8 @@
 [Desktop Entry]
 Encoding=UTF-8
-Version=1.1
+Version=1.2
 Type=Application
 Terminal=false
-Exec=/usr/local/bin/wireguird
+Exec=pkexec /usr/bin/wireguird
 Name=Wireguird
-Icon=/opt/wireguird/Icon/128x128/wireguard.png
+Icon=/usr/share/wireguird/Icon/128x128/wireguard.png

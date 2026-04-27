@@ -1,0 +1,7 @@
+* text=auto
+
+# Enforce LF line endings for shell scripts and system policies
+deb/usr/local/bin/wireguird text eol=lf
+*.desktop text eol=lf
+*.policy text eol=lf
+*.sh text eol=lf
