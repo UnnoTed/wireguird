@@ -16,6 +16,8 @@ Features:
 
 ## Download
 
+### Ubuntu
+
 v0.2.0 tested on: Ubuntu `18.04 LTS`, `20.04 LTS` and `21.04`
 
 [wireguird_amd64.deb (1.8mb)](https://github.com/UnnoTed/wireguird/releases/download/v0.2.0/wireguird_amd64.deb)
@@ -30,6 +32,12 @@ v1.1.0 tested on: Ubuntu `23.04`
 ```sh
 wget https://github.com/UnnoTed/wireguird/releases/download/v1.1.0/wireguird_amd64.deb
 sudo dpkg -i ./wireguird_amd64.deb
+```
+
+### Aur
+
+```sh
+yay -S wireguird
 ```
 
 ## Compile
