@@ -244,6 +244,11 @@ func (t *Tunnels) Create() error {
 		t.UpdateRow(row)
 	})
 
+	// live search box on top of the tunnel list
+	if err := setupTunnelSearch(tl); err != nil {
+		return err
+	}
+
 	// button: add tunnel
 	btnAddTunnel, err := get.Button("button_add_tunnel")
 	if err != nil {
@@ -251,64 +256,7 @@ func (t *Tunnels) Create() error {
 	}
 
 	btnAddTunnel.Connect("clicked", func() {
-		err := func() error {
-			log.Print("btn add tunnel")
-			dialog, err := gtk.FileChooserNativeDialogNew("Wireguird - Choose tunnel files (*.conf, *.zip)", window, gtk.FILE_CHOOSER_ACTION_OPEN, "OK", "Cancel")
-			if err != nil {
-				return err
-			}
-			defer dialog.Destroy()
-
-			// filter *.conf and *.zip files
-			filter, err := gtk.FileFilterNew()
-			if err != nil {
-				return err
-			}
-			filter.AddPattern("*.conf")
-			filter.AddPattern("*.zip")
-			filter.SetName("*.conf / *.zip")
-
-			dialog.AddFilter(filter)
-			dialog.SetSelectMultiple(true)
-
-			res := dialog.Run()
-			if gtk.ResponseType(res) == gtk.RESPONSE_ACCEPT {
-				list, err := dialog.GetFilenames()
-				if err != nil {
-					return err
-				}
-				for _, fname := range list {
-					// if file is zip archive
-					if strings.HasSuffix(fname, ".zip") {
-						err := parseZipArchive(fname)
-						if err != nil {
-							return err
-						}
-						continue
-					}
-
-					data, err := os.ReadFile(fname)
-					if err != nil {
-						return err
-					}
-
-					err = os.WriteFile(filepath.Join(TunnelsPath, filepath.Base(fname)), data, 666)
-					if err != nil {
-						return err
-					}
-				}
-
-				if err := t.ScanTunnels(); err != nil {
-					return err
-				}
-			}
-
-			return nil
-		}()
-
-		if err != nil {
-			ShowError(window, err, "add tunnel error")
-		}
+		t.showAddTunnelMenu(tl, btnAddTunnel)
 	})
 
 	// button: delete tunnel
