@@ -13,5 +13,6 @@
     </defaults>
     <annotate key="org.freedesktop.policykit.exec.path">/usr/bin/wireguird</annotate>
     <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+    <annotate key="org.freedesktop.policykit.exec.env.whitelist">DISPLAY;XAUTHORITY;DBUS_SESSION_BUS_ADDRESS;WAYLAND_DISPLAY;XDG_RUNTIME_DIR</annotate>
     </action>
 </policyconfig>

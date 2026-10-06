@@ -1,2 +1,8 @@
 #!/bin/sh
-pkexec /opt/wireguird/wireguird "$@"
+# If already root (e.g., run via `sudo`), execute the binary directly without
+# pkexec, which otherwise behaves inconsistently while running as root.
+if [ "$(id -u)" = "0" ]; then
+    /opt/wireguird/wireguird "$@"
+else
+    pkexec /opt/wireguird/wireguird "$@"
+fi
