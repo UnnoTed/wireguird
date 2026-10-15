@@ -292,7 +292,7 @@ func (t *Tunnels) Create() error {
 						return err
 					}
 
-					err = os.WriteFile(filepath.Join(TunnelsPath, filepath.Base(fname)), data, 666)
+					err = os.WriteFile(filepath.Join(TunnelsPath, filepath.Base(fname)), data, 0600)
 					if err != nil {
 						return err
 					}
@@ -644,9 +644,13 @@ func (t *Tunnels) Create() error {
 			}
 			newName = strings.TrimSpace(newName)
 
-			// rename the tunnel
+			// rename the tunnel (hardening, issue #78: the new name is
+			// allowlisted and the target is confined to TunnelsPath)
 			if name != newName {
-				newPath := filepath.Join(TunnelsPath, newName+ext)
+				newPath, err := tunnelConfPath(newName, ext)
+				if err != nil {
+					return err
+				}
 
 				if err := os.Rename(path, newPath); err != nil {
 					return err
@@ -671,8 +675,10 @@ func (t *Tunnels) Create() error {
 				return err
 			}
 
-			// write changes
-			if err := os.WriteFile(path, []byte(data), 666); err != nil {
+			// write changes (hardening, issue #79: tunnel configs hold
+			// private keys — owner-only; note the old code passed decimal
+			// 666, i.e. 0o1232, which was never the intended mode)
+			if err := os.WriteFile(path, []byte(data), 0600); err != nil {
 				return err
 			}
 
@@ -999,6 +1005,18 @@ func (t *Tunnels) ScanTunnels() error {
 			continue
 		}
 
+		// Hardening (issue #79): tunnel configs hold private keys, so
+		// tighten any group/other-readable file to owner-only.
+		// Best effort — a failure must not break the scan.
+		confPath := filepath.Join(TunnelsPath, fileName)
+		if st, err := os.Stat(confPath); err == nil {
+			if st.Mode().Perm()&0o77 != 0 {
+				if err := os.Chmod(confPath, 0o600); err != nil {
+					log.Error().Err(err).Str("file", fileName).Msg("Could not tighten tunnel config permissions")
+				}
+			}
+		}
+
 		name := strings.TrimSuffix(fileName, ".conf")
 		configByName[name] = TunnelsPath + fileName
 
@@ -1283,6 +1301,13 @@ func (t *Tunnels) ToggleTunnel(row *gtk.ListBoxRow, name string) error {
 		}
 	}
 
+	// Hardening (issue #78): never hand an unsafe tunnel name to the
+	// privileged wg-quick invocation below. Pre-existing configs keep
+	// working — only directory escape / option injection is refused.
+	if !safeExistingTunnelName(name) {
+		return fmt.Errorf("refusing to operate on unsafe tunnel name %q", name)
+	}
+
 	// https://github.com/UnnoTed/wireguird/issues/11#issuecomment-1332047191
 	if len(name) >= 16 {
 		ShowError(window, errors.New("Tunnel's file name is too long ("+strconv.Itoa(len(name))+"), max length: 15"))
@@ -1490,7 +1515,7 @@ func parseZipArchive(target string) error {
 				return err
 			}
 
-			err = os.WriteFile(filepath.Join(TunnelsPath, f.FileInfo().Name()), data, 666)
+			err = os.WriteFile(filepath.Join(TunnelsPath, f.FileInfo().Name()), data, 0600)
 			if err != nil {
 				return err
 			}
