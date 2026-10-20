@@ -35,7 +35,26 @@ var (
 	header         *gtk.HeaderBar
 	wgc            *wgctrl.Client
 	updateTicker   *time.Ticker
+	tunnels        *Tunnels
 )
+
+// PeersExtraHeight returns how much taller the window must grow so that every
+// peer of the selected tunnel is visible without scrolling. The peers list
+// lives in a scrolled window, so what it currently got allocated is compared
+// with its real content height.
+func PeersExtraHeight() int {
+	if tunnels == nil || tunnels.peerList == nil || tunnels.peerScroller == nil {
+		return 0
+	}
+
+	_, content := tunnels.peerList.GetPreferredHeight()
+	extra := content - tunnels.peerScroller.GetAllocatedHeight()
+	if extra < 0 {
+		extra = 0
+	}
+
+	return extra
+}
 
 func Create(app *gtk.Application, b *gtk.Builder, w *gtk.ApplicationWindow, ind *appindicator.Indicator) error {
 	application = app
@@ -81,6 +100,7 @@ func Create(app *gtk.Application, b *gtk.Builder, w *gtk.ApplicationWindow, ind 
 	if err := t.Create(); err != nil {
 		return err
 	}
+	tunnels = t
 
 	if Settings.CheckUpdates {
 		go func() {
@@ -124,6 +144,19 @@ func Create(app *gtk.Application, b *gtk.Builder, w *gtk.ApplicationWindow, ind 
 			return err
 		}
 	}
+
+	// the window's close button only hides it to the tray, so provide an
+	// explicit quit button in the header bar
+	quitButton, err := get.Button("button_quit")
+	if err != nil {
+		return err
+	}
+	quitButton.Connect("clicked", func() {
+		application.Quit()
+	})
+
+	wlog("INFO", "Wireguird v"+Version+" started")
+
 	return nil
 }
 
@@ -139,6 +172,24 @@ func ShowError(win *gtk.ApplicationWindow, err error, info ...string) {
 		dlg.Run()
 		dlg.Destroy()
 	})
+}
+
+// runOnMainThread runs fn on the GTK main thread and waits for it to finish.
+// GTK and libappindicator are not thread-safe, so any call to them from a
+// background goroutine has to be dispatched to the main thread. If the caller
+// already is the main thread, fn runs immediately to avoid a deadlock.
+func runOnMainThread(fn func()) {
+	if glib.MainContextDefault().IsOwner() {
+		fn()
+		return
+	}
+
+	done := make(chan struct{}, 1)
+	glib.IdleAdd(func() {
+		fn()
+		done <- struct{}{}
+	})
+	<-done
 }
 
 func createEditor(name string, show bool) (*gtk.Window, error) {

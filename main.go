@@ -5,7 +5,11 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"strconv"
+	"strings"
+	"syscall"
 
 	"github.com/UnnoTed/go-appindicator"
 	"github.com/UnnoTed/horizontal"
@@ -20,6 +24,7 @@ import (
 
 var iconTmpDir = os.TempDir()
 var win *gtk.ApplicationWindow
+var singleInstanceLock *os.File
 
 func main() {
 	if os.Geteuid() != 0 {
@@ -43,6 +48,13 @@ func main() {
 	defer os.Remove(iconTmpDir)
 	defer countries.CloseDatabase()
 
+	// gtk.Application's own single-instance handling relies on the session bus,
+	// which is unavailable when running as root via pkexec, so a lock file is
+	// used to stop instances from piling up.
+	if !acquireSingleInstance() {
+		return
+	}
+
 	log.Logger = log.Output(horizontal.ConsoleWriter{Out: os.Stderr})
 	log.Info().Uint("major", gtk.GetMajorVersion()).Uint("minor", gtk.GetMinorVersion()).Uint("micro", gtk.GetMicroVersion()).Msg("GTK Version")
 
@@ -63,7 +75,60 @@ func main() {
 		}
 	})
 
+	// another launch (e.g. clicking the desktop icon again) asks the running
+	// instance to bring its window back instead of starting a second process
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGUSR1)
+	go func() {
+		for range sigCh {
+			glib.IdleAdd(func() {
+				if win != nil {
+					win.Show()
+					win.Present()
+				}
+			})
+		}
+	}()
+
 	os.Exit(application.Run(os.Args))
+}
+
+// acquireSingleInstance takes an exclusive lock for the process lifetime and
+// returns whether this process should run. If another instance holds the lock,
+// it is asked to show its window and this process exits.
+func acquireSingleInstance() bool {
+	lockPath := "/run/wireguird.lock"
+
+	lock, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		lockPath = filepath.Join(os.TempDir(), "wireguird.lock")
+		lock, err = os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0600)
+		if err != nil {
+			log.Error().Err(err).Msg("error opening single instance lock file")
+			return true
+		}
+	}
+
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		if data, err := os.ReadFile(lockPath); err == nil {
+			if pid, err := strconv.Atoi(strings.TrimSpace(string(data))); err == nil && pid > 0 {
+				syscall.Kill(pid, syscall.SIGUSR1)
+			}
+		}
+
+		fmt.Println("Wireguird is already running, showing its window.")
+		return false
+	}
+
+	// record our pid so the next launch can ask us to show the window
+	lock.Truncate(0)
+	lock.WriteAt([]byte(strconv.Itoa(os.Getpid())+"\n"), 0)
+	lock.Sync()
+
+	// keep the file open so the lock is held until the process exits
+	singleInstanceLock = lock
+
+	return true
 }
 
 func createTray(application *gtk.Application) (*appindicator.Indicator, error) {
@@ -188,6 +253,17 @@ func createWindow(application *gtk.Application) error {
 		return err
 	}
 
+	// once the window has been laid out, grow it by the space the peer list
+	// needs; the default size already fits a single peer
+	fitted := false
+	win.Connect("size-allocate", func() {
+		if fitted {
+			return
+		}
+		fitted = true
+		fitWindowToPeers()
+	})
+
 	if !gui.Settings.StartOnTray {
 		win.ShowAll()
 	}
@@ -195,4 +271,39 @@ func createWindow(application *gtk.Application) error {
 	win.SetTitle("Wireguird")
 
 	return nil
+}
+
+// fitWindowToPeers grows the window so that all peers of the selected tunnel
+// are visible without scrolling. If there are too many peers to fit, the
+// window is made as tall as the monitor's work area and the peers scroll.
+func fitWindowToPeers() {
+	extra := gui.PeersExtraHeight()
+	if extra <= 0 {
+		return
+	}
+
+	width, height := win.GetSize()
+	wanted := height + extra
+
+	// don't grow beyond the monitor's work area
+	maxHeight := 0
+	if display, err := gdk.DisplayGetDefault(); err == nil && display != nil {
+		monitor, merr := display.GetPrimaryMonitor()
+		if (merr != nil || monitor == nil) && display.GetNMonitors() > 0 {
+			monitor, _ = display.GetMonitor(0)
+		}
+
+		if monitor != nil {
+			if area := monitor.GetWorkarea(); area != nil {
+				_, _, _, h := area.GetRectangleInt()
+				maxHeight = h
+			}
+		}
+	}
+
+	if maxHeight > 0 && wanted > maxHeight {
+		wanted = maxHeight
+	}
+
+	win.Resize(width, wanted)
 }

@@ -201,7 +201,7 @@
                     <property name="orientation">vertical</property>
                     <child>
                       <object class="GtkScrolledWindow">
-                        <property name="width-request">200</property>
+                        <property name="width-request">280</property>
                         <property name="visible">True</property>
                         <property name="can-focus">True</property>
                         <property name="hexpand">True</property>
@@ -210,12 +210,12 @@
                         <property name="shadow-type">in</property>
                         <child>
                           <object class="GtkViewport">
-                            <property name="width-request">200</property>
+                            <property name="width-request">280</property>
                             <property name="visible">True</property>
                             <property name="can-focus">False</property>
                             <child>
                               <object class="GtkListBox" id="tunnel_list">
-                                <property name="width-request">200</property>
+                                <property name="width-request">280</property>
                                 <property name="visible">True</property>
                                 <property name="can-focus">False</property>
                                 <property name="hexpand">True</property>
@@ -238,8 +238,22 @@
                         <property name="margin-top">8</property>
                         <property name="spacing">8</property>
                         <child>
+                          <object class="GtkButton" id="button_edit_tunnel">
+                            <property name="label" translatable="yes">Edit</property>
+                            <property name="visible">True</property>
+                            <property name="can-focus">True</property>
+                            <property name="receives-default">True</property>
+                            <property name="tooltip-text" translatable="yes">Edit the selected tunnel's config</property>
+                          </object>
+                          <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="position">0</property>
+                          </packing>
+                        </child>
+                        <child>
                           <object class="GtkButton" id="button_add_tunnel">
-                            <property name="label" translatable="yes">Add Tunnel</property>
+                            <property name="label" translatable="yes">Add Tunnel from file</property>
                             <property name="visible">True</property>
                             <property name="can-focus">True</property>
                             <property name="receives-default">True</property>
@@ -248,7 +262,7 @@
                           <packing>
                             <property name="expand">False</property>
                             <property name="fill">True</property>
-                            <property name="position">0</property>
+                            <property name="position">1</property>
                           </packing>
                         </child>
                         <child>
@@ -259,7 +273,7 @@
                           <packing>
                             <property name="expand">True</property>
                             <property name="fill">True</property>
-                            <property name="position">1</property>
+                            <property name="position">2</property>
                           </packing>
                         </child>
                         <child>
@@ -273,7 +287,7 @@
                           <packing>
                             <property name="expand">False</property>
                             <property name="fill">True</property>
-                            <property name="position">2</property>
+                            <property name="position">3</property>
                           </packing>
                         </child>
                         <child>
@@ -287,7 +301,7 @@
                           <packing>
                             <property name="expand">False</property>
                             <property name="fill">True</property>
-                            <property name="position">3</property>
+                            <property name="position">4</property>
                           </packing>
                         </child>
                       </object>
@@ -739,7 +753,7 @@
                                 <property name="can-focus">False</property>
                                 <property name="valign">start</property>
                                 <child>
-                                  <object class="GtkLabel">
+                                  <object class="GtkLabel" id="label_version">
                                     <property name="visible">True</property>
                                     <property name="can-focus">False</property>
                                     <property name="hexpand">True</property>
@@ -748,21 +762,6 @@
                                     <property name="expand">False</property>
                                     <property name="fill">True</property>
                                     <property name="position">0</property>
-                                  </packing>
-                                </child>
-                                <child>
-                                  <object class="GtkButton" id="button_edit_tunnel">
-                                    <property name="label" translatable="yes">Edit</property>
-                                    <property name="visible">True</property>
-                                    <property name="can-focus">True</property>
-                                    <property name="receives-default">True</property>
-                                    <property name="halign">start</property>
-                                    <property name="valign">start</property>
-                                  </object>
-                                  <packing>
-                                    <property name="expand">False</property>
-                                    <property name="fill">True</property>
-                                    <property name="position">1</property>
                                   </packing>
                                 </child>
                               </object>
@@ -844,15 +843,25 @@
           </object>
         </child>
         <child>
-          <object class="GtkMenuButton" id="menu">
+          <object class="GtkButton" id="button_settings">
+            <property name="label" translatable="yes">Settings</property>
             <property name="visible">True</property>
             <property name="can-focus">True</property>
-            <property name="focus-on-click">False</property>
             <property name="receives-default">True</property>
-            <property name="use-popover">False</property>
-            <child>
-              <placeholder/>
-            </child>
+            <property name="tooltip-text" translatable="yes">Wireguird settings</property>
+          </object>
+          <packing>
+            <property name="pack-type">end</property>
+            <property name="position">2</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkButton" id="button_quit">
+            <property name="label" translatable="yes">Quit</property>
+            <property name="visible">True</property>
+            <property name="can-focus">True</property>
+            <property name="receives-default">True</property>
+            <property name="tooltip-text" translatable="yes">Quit Wireguird</property>
           </object>
           <packing>
             <property name="pack-type">end</property>

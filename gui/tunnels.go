@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ungerik/go-dry"
@@ -43,6 +44,30 @@ func init() {
 	}
 }
 
+// peerRow holds the widgets of a single peer entry in the peers list.
+type peerRow struct {
+	publicKeyStr string
+	active       bool
+	publicKey    *gtk.Label
+	allowedIPs   *gtk.Label
+	endpoint     *gtk.Label
+	handshake    *gtk.Label
+	transfer     *gtk.Label
+	button       *gtk.Button
+}
+
+// peerDisplay is the data shown for a single peer, merged from the tunnel's
+// config file and the live wireguard device.
+type peerDisplay struct {
+	comment    string
+	publicKey  string
+	allowedIPs string
+	endpoint   string
+	handshake  string
+	transfer   string
+	active     bool
+}
+
 type Tunnels struct {
 	Interface struct {
 		Status     *gtk.Label
@@ -52,13 +77,10 @@ type Tunnels struct {
 		DNS        *gtk.Label
 	}
 
-	Peer struct {
-		PublicKey       *gtk.Label
-		AllowedIPs      *gtk.Label
-		Endpoint        *gtk.Label
-		LatestHandshake *gtk.Label
-		Transfer        *gtk.Label
-	}
+	peerList     *gtk.Box
+	peerScroller *gtk.ScrolledWindow
+	peerFrames   []*gtk.Frame
+	peerRows     []*peerRow
 
 	Settings struct {
 		MultipleTunnels          *gtk.CheckButton
@@ -76,6 +98,11 @@ type Tunnels struct {
 	lastSelected                 string
 	reconnectedRememberedServers bool
 
+	// last known endpoints of deactivated peers, so they can be restored when
+	// the peer is activated again (removing a peer makes wg forget it)
+	peerEndpoints   map[string]string
+	peerEndpointsMu sync.Mutex
+
 	grayIcon  *gtk.Image
 	greenIcon *gtk.Image
 
@@ -88,6 +115,7 @@ func (t *Tunnels) Create() error {
 	t.icons = map[string]*gtk.Image{}
 	t.tunnelsTrayMenuItems = make(map[string]*gtk.CheckMenuItem)
 	t.tunnelsTrayMenuHandles = make(map[string]glib.SignalHandle)
+	t.peerEndpoints = map[string]string{}
 	t.ticker = time.NewTicker(1 * time.Second)
 
 	var err error
@@ -114,6 +142,44 @@ func (t *Tunnels) Create() error {
 		return err
 	}
 
+	// build a dynamic list of peers instead of the single static one
+	boxPeers, err := get.Box("box_peers")
+	if err != nil {
+		return err
+	}
+
+	// remove the static single-peer frame that comes from the glade file
+	boxPeers.GetChildren().Foreach(func(item interface{}) {
+		if w, ok := item.(*gtk.Widget); ok {
+			boxPeers.Remove(w)
+		}
+	})
+
+	peerScroller, err := gtk.ScrolledWindowNew(nil, nil)
+	if err != nil {
+		return err
+	}
+	peerScroller.SetPolicy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
+
+	peerViewport, err := gtk.ViewportNew(nil, nil)
+	if err != nil {
+		return err
+	}
+
+	t.peerList, err = gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 8)
+	if err != nil {
+		return err
+	}
+	t.peerList.SetHExpand(true)
+
+	peerViewport.Add(t.peerList)
+	peerScroller.Add(peerViewport)
+	t.peerScroller = peerScroller
+	boxPeers.SetHomogeneous(false)
+	boxPeers.SetVExpand(true)
+	boxPeers.PackStart(peerScroller, true, true, 0)
+	peerScroller.ShowAll()
+
 	if err := t.ScanTunnels(); err != nil {
 		return err
 	}
@@ -129,50 +195,25 @@ func (t *Tunnels) Create() error {
 		}
 	})
 
-	// menu
-	{
-		mb, err := get.MenuButton("menu")
-		if err != nil {
-			return err
-		}
-
-		menu, err := gtk.MenuNew()
-		if err != nil {
-			return err
-		}
-
-		mSettings, err := gtk.MenuItemNew()
-		if err != nil {
-			return err
-		}
-
-		mSettings.SetLabel("Settings")
-		//mSettings.SetSensitive(false)
-		mSettings.Connect("activate", func() {
-			settingsWindow.ShowAll()
-		})
-		menu.Append(mSettings)
-
-		mVersion, err := gtk.MenuItemNew()
-		if err != nil {
-			return err
-		}
-
-		mVersion.SetLabel("VERSION: v" + Version)
-		//mVersion.SetSensitive(false)
-		mVersion.Connect("activate", func() {
-			if err := exec.Command("xdg-open", Repo).Start(); err != nil {
-				ShowError(window, err, "open repo url error")
-			}
-		})
-		menu.Append(mVersion)
-
-		menu.SetHAlign(gtk.ALIGN_CENTER)
-		menu.SetVAlign(gtk.ALIGN_CENTER)
-
-		menu.ShowAll()
-		mb.SetPopup(menu)
+	settingsButton, err := get.Button("button_settings")
+	if err != nil {
+		return err
 	}
+	settingsButton.Connect("clicked", func() {
+		// reload the widgets from the current settings, otherwise a
+		// cancelled edit would still be shown when reopening the window
+		if err := t.FromSettings(); err != nil {
+			ShowError(window, err, "settings load error")
+		}
+		settingsWindow.ShowAll()
+	})
+
+	versionLabel, err := get.Label("label_version")
+	if err != nil {
+		return err
+	}
+	versionLabel.SetText("VERSION: v" + Version)
+	versionLabel.SetTooltipText(Repo)
 
 	t.Interface.Status, err = get.Label("label_interface_status")
 	if err != nil {
@@ -199,31 +240,6 @@ func (t *Tunnels) Create() error {
 		return err
 	}
 
-	t.Peer.PublicKey, err = get.Label("label_peer_public_key")
-	if err != nil {
-		return err
-	}
-
-	t.Peer.AllowedIPs, err = get.Label("label_peer_allowed_ips")
-	if err != nil {
-		return err
-	}
-
-	t.Peer.Endpoint, err = get.Label("label_peer_endpoint")
-	if err != nil {
-		return err
-	}
-
-	t.Peer.LatestHandshake, err = get.Label("label_peer_latest_handshake")
-	if err != nil {
-		return err
-	}
-
-	t.Peer.Transfer, err = get.Label("label_peer_transfer")
-	if err != nil {
-		return err
-	}
-
 	t.ButtonChangeState, err = get.Button("button_change_state")
 	if err != nil {
 		return err
@@ -234,11 +250,6 @@ func (t *Tunnels) Create() error {
 			ShowError(window, err)
 		}
 	})
-
-	// boxPeers, err := get.Box("box_peers")
-	// if err != nil {
-	// 	return err
-	// }
 
 	tl.Connect("row-activated", func(l *gtk.ListBox, row *gtk.ListBoxRow) {
 		t.UpdateRow(row)
@@ -253,7 +264,17 @@ func (t *Tunnels) Create() error {
 	btnAddTunnel.Connect("clicked", func() {
 		err := func() error {
 			log.Print("btn add tunnel")
-			dialog, err := gtk.FileChooserNativeDialogNew("Wireguird - Choose tunnel files (*.conf, *.zip)", window, gtk.FILE_CHOOSER_ACTION_OPEN, "OK", "Cancel")
+			// a plain GtkFileChooserDialog is used instead of the "native" one:
+			// the native dialog needs the xdg-desktop-portal over the session
+			// bus, which is unavailable when running as root via pkexec, and it
+			// would hang invisibly holding a modal grab on the main window
+			dialog, err := gtk.FileChooserDialogNewWith2Buttons(
+				"Wireguird - Choose tunnel files (*.conf, *.zip)",
+				window,
+				gtk.FILE_CHOOSER_ACTION_OPEN,
+				"OK", gtk.RESPONSE_ACCEPT,
+				"Cancel", gtk.RESPONSE_CANCEL,
+			)
 			if err != nil {
 				return err
 			}
@@ -758,18 +779,49 @@ func (t *Tunnels) Create() error {
 	}
 
 	go func() {
+		type tickState struct {
+			visible bool
+			rowNil  bool
+			nameErr bool
+			name    string
+		}
+
 		for {
 			<-t.ticker.C
 
-			// update tray icon
 			activeNames := t.ActiveDeviceName()
-			if len(activeNames) == 0 {
-				indicator.SetIcon("wireguard_off")
-			} else {
-				indicator.SetIcon("wg_connected")
-			}
 
-			if !window.IsVisible() {
+			var st tickState
+			runOnMainThread(func() {
+				// update tray icon
+				if len(activeNames) == 0 {
+					indicator.SetIcon("wireguard_off")
+				} else {
+					indicator.SetIcon("wg_connected")
+				}
+
+				st.visible = window.IsVisible()
+				if !st.visible {
+					return
+				}
+
+				row := tl.GetSelectedRow()
+				if row == nil {
+					st.rowNil = true
+					return
+				}
+
+				name, err := row.GetName()
+				if err != nil {
+					log.Error().Err(err).Msg("row get name err")
+					st.nameErr = true
+					return
+				}
+
+				st.name = name
+			})
+
+			if !st.visible {
 				continue
 			}
 
@@ -791,26 +843,23 @@ func (t *Tunnels) Create() error {
 				}
 			})
 
-			row := tl.GetSelectedRow()
-			if row == nil {
+			if st.rowNil {
 				t.UnknownLabels()
 				continue
 			}
 
-			name, err := row.GetName()
-			if err != nil {
-				log.Error().Err(err).Msg("row get name err")
+			if st.nameErr {
 				continue
 			}
 
+			name := st.name
 			if !dry.StringListContains(activeNames, name) {
 				glib.IdleAdd(func() {
 					t.Interface.Status.SetText("Inactive")
 					t.Interface.PublicKey.SetText("unknown")
 					t.Interface.ListenPort.SetText("unknown")
 					t.ButtonChangeState.SetLabel("Activate")
-					t.Peer.LatestHandshake.SetText("unknown")
-					t.Peer.Transfer.SetText("unknown")
+					t.setPeerStatsUnknown()
 				})
 				continue
 			}
@@ -827,11 +876,7 @@ func (t *Tunnels) Create() error {
 				t.Interface.ListenPort.SetText(strconv.Itoa(d.ListenPort))
 				t.ButtonChangeState.SetLabel("Deactivate")
 
-				for _, p := range d.Peers {
-					hs := humanize.Time(p.LastHandshakeTime)
-					t.Peer.LatestHandshake.SetText(hs)
-					t.Peer.Transfer.SetText(humanize.Bytes(uint64(p.ReceiveBytes)) + " received, " + humanize.Bytes(uint64(p.TransmitBytes)) + " sent")
-				}
+				t.setPeerStats(d.Peers)
 			})
 		}
 	}()
@@ -922,7 +967,9 @@ func (t *Tunnels) UpdateRow(row *gtk.ListBoxRow) {
 			return err
 		}
 
-		cfg, err := ini.Load(TunnelsPath + id + ".conf")
+		// AllowNonUniqueSections is required to read every [Peer] section,
+		// otherwise ini.v1 merges them and only the last one is visible.
+		cfg, err := ini.LoadSources(ini.LoadOptions{AllowNonUniqueSections: true}, TunnelsPath+id+".conf")
 		if err != nil {
 			return err
 		}
@@ -930,8 +977,15 @@ func (t *Tunnels) UpdateRow(row *gtk.ListBoxRow) {
 		t.lastSelected = id
 		t.UnknownLabels()
 
-		peersec := cfg.Section("Peer")
 		insec := cfg.Section("Interface")
+
+		var device *wgtypes.Device
+		for _, d := range ds {
+			if d.Name == id {
+				device = d
+				break
+			}
+		}
 
 		glib.IdleAdd(func() {
 			t.Interface.Addresses.SetText(insec.Key("Address").String())
@@ -939,41 +993,18 @@ func (t *Tunnels) UpdateRow(row *gtk.ListBoxRow) {
 			t.Interface.DNS.SetText(insec.Key("DNS").String())
 
 			t.ButtonChangeState.SetLabel("Activate")
-
-			t.Peer.AllowedIPs.SetText(peersec.Key("AllowedIPs").String())
-			t.Peer.PublicKey.SetText(peersec.Key("PublicKey").String())
-			t.Peer.Endpoint.SetText(peersec.Key("Endpoint").String())
 		})
 
-		for _, d := range ds {
-			if d.Name != id {
-				continue
-			}
-
-			// i'll do this later
-			// _ = boxPeers
-			// boxPeers.GetChildren().Foreach(func(item interface{}) {
-			// 	boxPeers.Remove(item.(*gtk.Widget))
-			// })
-
+		if device != nil {
 			glib.IdleAdd(func() {
 				t.Interface.Status.SetText("Active")
 				t.ButtonChangeState.SetLabel("Deactivate")
-				t.Interface.PublicKey.SetText(d.PublicKey.String())
-				t.Interface.ListenPort.SetText(strconv.Itoa(d.ListenPort))
+				t.Interface.PublicKey.SetText(device.PublicKey.String())
+				t.Interface.ListenPort.SetText(strconv.Itoa(device.ListenPort))
 			})
-
-			for _, p := range d.Peers {
-				hs := humanize.Time(p.LastHandshakeTime)
-
-				glib.IdleAdd(func() {
-					t.Peer.LatestHandshake.SetText(hs)
-					t.Peer.Transfer.SetText(humanize.Bytes(uint64(p.ReceiveBytes)) + " received, " + humanize.Bytes(uint64(p.TransmitBytes)) + " sent")
-				})
-			}
-
-			break
 		}
+
+		t.renderPeers(id, device != nil, peerDisplays(cfg, device))
 
 		return nil
 	}()
@@ -981,6 +1012,439 @@ func (t *Tunnels) UpdateRow(row *gtk.ListBoxRow) {
 	if err != nil {
 		log.Error().Err(err).Msg("row activated")
 		ShowError(window, err)
+	}
+}
+
+// peerDisplays builds the peer list of a tunnel by merging its config file
+// (every [Peer] section) with the live data of its wireguard device.
+func peerDisplays(cfg *ini.File, device *wgtypes.Device) []peerDisplay {
+	live := map[string]wgtypes.Peer{}
+	if device != nil {
+		for _, p := range device.Peers {
+			live[p.PublicKey.String()] = p
+		}
+	}
+
+	var peers []peerDisplay
+	seen := map[string]bool{}
+
+	secs, err := cfg.SectionsByName("Peer")
+	if err != nil {
+		log.Error().Err(err).Msg("error loading peer sections")
+	}
+
+	for _, sec := range secs {
+		p := peerDisplay{
+			comment:    strings.TrimSpace(sec.Comment),
+			publicKey:  strings.TrimSpace(sec.Key("PublicKey").String()),
+			allowedIPs: strings.TrimSpace(sec.Key("AllowedIPs").String()),
+			endpoint:   strings.TrimSpace(sec.Key("Endpoint").String()),
+			handshake:  "unknown",
+			transfer:   "unknown",
+		}
+
+		seen[p.publicKey] = true
+
+		if lp, ok := live[p.publicKey]; ok {
+			p.active = true
+			if lp.Endpoint != nil {
+				p.endpoint = lp.Endpoint.String()
+			}
+			p.handshake = humanize.Time(lp.LastHandshakeTime)
+			p.transfer = peerTransferString(lp)
+		}
+
+		peers = append(peers, p)
+	}
+
+	// include peers that are set on the running device but not in the config
+	if device != nil {
+		for _, lp := range device.Peers {
+			pk := lp.PublicKey.String()
+			if seen[pk] {
+				continue
+			}
+
+			p := peerDisplay{
+				publicKey: pk,
+				active:    true,
+				handshake: humanize.Time(lp.LastHandshakeTime),
+				transfer:  peerTransferString(lp),
+			}
+			if lp.Endpoint != nil {
+				p.endpoint = lp.Endpoint.String()
+			}
+
+			ips := make([]string, 0, len(lp.AllowedIPs))
+			for _, ip := range lp.AllowedIPs {
+				ips = append(ips, ip.String())
+			}
+			p.allowedIPs = strings.Join(ips, ", ")
+			seen[pk] = true
+
+			peers = append(peers, p)
+		}
+	}
+
+	return peers
+}
+
+func peerTransferString(p wgtypes.Peer) string {
+	return humanize.Bytes(uint64(p.ReceiveBytes)) + " received, " + humanize.Bytes(uint64(p.TransmitBytes)) + " sent"
+}
+
+// renderPeers rebuilds the peers list with one frame per peer.
+func (t *Tunnels) renderPeers(tunnel string, deviceActive bool, peers []peerDisplay) {
+	runOnMainThread(func() {
+		for _, f := range t.peerFrames {
+			f.Destroy()
+		}
+		t.peerFrames = nil
+		t.peerRows = nil
+
+		if t.peerList == nil {
+			return
+		}
+
+		for _, p := range peers {
+			// this new variable is necessary - https://go.dev/blog/loopvar-preview
+			peer := p
+			frame, row, err := newPeerFrame(peer, deviceActive, func(activate bool) {
+				t.togglePeer(tunnel, peer, activate)
+			})
+			if err != nil {
+				log.Error().Err(err).Msg("error building peer frame")
+				continue
+			}
+
+			// make the frame fill the list width so the button stays on the
+			// right hand side when the window is resized
+			frame.SetHExpand(true)
+			t.peerList.PackStart(frame, true, true, 0)
+			t.peerFrames = append(t.peerFrames, frame)
+			t.peerRows = append(t.peerRows, row)
+		}
+
+		t.peerList.ShowAll()
+	})
+}
+
+// refreshPeers reloads a tunnel's config and live device and redraws its peers.
+func (t *Tunnels) refreshPeers(tunnel string) error {
+	cfg, err := ini.LoadSources(ini.LoadOptions{AllowNonUniqueSections: true}, TunnelsPath+tunnel+".conf")
+	if err != nil {
+		return err
+	}
+
+	ds, err := wgc.Devices()
+	if err != nil {
+		return err
+	}
+
+	var device *wgtypes.Device
+	for _, d := range ds {
+		if d.Name == tunnel {
+			device = d
+			break
+		}
+	}
+
+	t.renderPeers(tunnel, device != nil, peerDisplays(cfg, device))
+
+	return nil
+}
+
+// togglePeer removes a peer from the running interface or re-adds it from the
+// tunnel's config file.
+func (t *Tunnels) togglePeer(tunnel string, p peerDisplay, activate bool) {
+	go func() {
+		var err error
+		if activate {
+			err = t.activatePeer(tunnel, p.publicKey)
+		} else {
+			t.rememberPeerEndpoint(tunnel, p.publicKey)
+			err = deactivatePeer(tunnel, p.publicKey)
+		}
+
+		runOnMainThread(func() {
+			if err != nil {
+				log.Error().Err(err).Str("peer", p.publicKey).Msg("error toggling peer")
+				ShowError(window, err)
+			} else if activate {
+				wlog("INFO", "Activated peer "+shortPeerKey(p.publicKey)+" on "+tunnel)
+			} else {
+				wlog("INFO", "Deactivated peer "+shortPeerKey(p.publicKey)+" on "+tunnel)
+			}
+
+			if rerr := t.refreshPeers(tunnel); rerr != nil {
+				log.Error().Err(rerr).Msg("error refreshing peers")
+			}
+		})
+	}()
+}
+
+// shortPeerKey returns a shortened public key for log messages.
+func shortPeerKey(publicKey string) string {
+	if len(publicKey) > 12 {
+		return publicKey[:12] + "…"
+	}
+
+	return publicKey
+}
+
+func peerEndpointKey(tunnel, publicKey string) string {
+	return tunnel + "|" + publicKey
+}
+
+// rememberPeerEndpoint stores the endpoint a peer is currently using, because
+// removing a peer makes the kernel forget it.
+func (t *Tunnels) rememberPeerEndpoint(tunnel, publicKey string) {
+	d, err := wgc.Device(tunnel)
+	if err != nil {
+		return
+	}
+
+	for _, lp := range d.Peers {
+		if lp.PublicKey.String() != publicKey || lp.Endpoint == nil {
+			continue
+		}
+
+		t.peerEndpointsMu.Lock()
+		t.peerEndpoints[peerEndpointKey(tunnel, publicKey)] = lp.Endpoint.String()
+		t.peerEndpointsMu.Unlock()
+		return
+	}
+}
+
+// activatePeer re-adds a single peer to the running interface using the values
+// of the config file. wg addconf is additive, so other peers are untouched.
+func (t *Tunnels) activatePeer(tunnel, publicKey string) error {
+	cfg, err := ini.LoadSources(ini.LoadOptions{AllowNonUniqueSections: true}, TunnelsPath+tunnel+".conf")
+	if err != nil {
+		return err
+	}
+
+	secs, err := cfg.SectionsByName("Peer")
+	if err != nil {
+		return err
+	}
+
+	var peer *ini.Section
+	for _, sec := range secs {
+		if strings.TrimSpace(sec.Key("PublicKey").String()) == publicKey {
+			peer = sec
+			break
+		}
+	}
+
+	if peer == nil {
+		return fmt.Errorf("peer %s is not defined in %s.conf", publicKey, tunnel)
+	}
+
+	// use the config's endpoint, or the one the peer had before being removed
+	endpoint := strings.TrimSpace(peer.Key("Endpoint").String())
+	if endpoint == "" {
+		t.peerEndpointsMu.Lock()
+		endpoint = t.peerEndpoints[peerEndpointKey(tunnel, publicKey)]
+		t.peerEndpointsMu.Unlock()
+	}
+
+	var b strings.Builder
+	b.WriteString("[Peer]\n")
+	for _, key := range []string{"PublicKey", "PresharedKey", "AllowedIPs", "PersistentKeepalive"} {
+		if v := strings.TrimSpace(peer.Key(key).String()); v != "" {
+			fmt.Fprintf(&b, "%s = %s\n", key, v)
+		}
+	}
+	if endpoint != "" {
+		fmt.Fprintf(&b, "Endpoint = %s\n", endpoint)
+	}
+
+	tmp, err := os.CreateTemp("", "wireguird-peer-*.conf")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	defer os.Remove(tmpName)
+
+	if err := os.WriteFile(tmpName, []byte(b.String()), 0600); err != nil {
+		return err
+	}
+
+	out, err := exec.Command("wg", "addconf", tunnel, tmpName).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("wg addconf %s: %s (%v)", tunnel, strings.TrimSpace(string(out)), err)
+	}
+
+	// with a known endpoint the server can initiate the handshake itself, so
+	// send one packet to make the kernel do it right away
+	if endpoint != "" {
+		for _, cidr := range strings.Split(peer.Key("AllowedIPs").String(), ",") {
+			ip, _, err := net.ParseCIDR(strings.TrimSpace(cidr))
+			if err != nil {
+				continue
+			}
+
+			exec.Command("ping", "-c", "1", "-W", "1", ip.String()).Run()
+			break
+		}
+	}
+
+	return nil
+}
+
+// deactivatePeer removes a single peer from the running interface, keeping it
+// in the config file.
+func deactivatePeer(tunnel, publicKey string) error {
+	out, err := exec.Command("wg", "set", tunnel, "peer", publicKey, "remove").CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("wg set %s peer ... remove: %s (%v)", tunnel, strings.TrimSpace(string(out)), err)
+	}
+
+	return nil
+}
+
+func newPeerFrame(p peerDisplay, deviceActive bool, onToggle func(activate bool)) (*gtk.Frame, *peerRow, error) {
+	title := "Peer"
+	if c := strings.TrimSpace(strings.TrimLeft(p.comment, "#")); c != "" {
+		title = c
+	}
+
+	frame, err := gtk.FrameNew(title)
+	if err != nil {
+		return nil, nil, err
+	}
+	frame.SetLabelAlign(0, 0.5)
+	frame.SetShadowType(gtk.SHADOW_OUT)
+
+	grid, err := gtk.GridNew()
+	if err != nil {
+		return nil, nil, err
+	}
+	grid.SetColumnSpacing(8)
+	grid.SetRowSpacing(4)
+	grid.SetHExpand(true)
+
+	row := &peerRow{publicKeyStr: p.publicKey, active: p.active}
+
+	entries := []struct {
+		name  string
+		value string
+		dest  **gtk.Label
+	}{
+		{"Public key:", p.publicKey, &row.publicKey},
+		{"Allowed IPs:", p.allowedIPs, &row.allowedIPs},
+		{"Endpoint:", p.endpoint, &row.endpoint},
+		{"Latest handshake:", p.handshake, &row.handshake},
+		{"Transfer:", p.transfer, &row.transfer},
+	}
+
+	for i, entry := range entries {
+		nameLabel, err := gtk.LabelNew(entry.name)
+		if err != nil {
+			return nil, nil, err
+		}
+		nameLabel.SetHAlign(gtk.ALIGN_END)
+
+		valueLabel, err := gtk.LabelNew(entry.value)
+		if err != nil {
+			return nil, nil, err
+		}
+		valueLabel.SetHAlign(gtk.ALIGN_START)
+		valueLabel.SetHExpand(true)
+		valueLabel.SetSelectable(true)
+
+		grid.Attach(nameLabel, 0, i, 1, 1)
+		grid.Attach(valueLabel, 1, i, 1, 1)
+
+		*entry.dest = valueLabel
+	}
+
+	button, err := gtk.ButtonNewWithLabel("Deactivate")
+	if err != nil {
+		return nil, nil, err
+	}
+	button.SetHAlign(gtk.ALIGN_END)
+	button.SetVAlign(gtk.ALIGN_CENTER)
+	button.SetMarginTop(4)
+
+	switch {
+	case !deviceActive:
+		button.SetLabel("Activate")
+		button.SetSensitive(false)
+		button.SetTooltipText("The tunnel's interface is not active")
+	case p.active:
+		button.SetTooltipText("Remove this peer from the running interface")
+	default:
+		button.SetLabel("Activate")
+		button.SetTooltipText("Add this peer back to the running interface")
+	}
+
+	button.Connect("clicked", func() {
+		button.SetSensitive(false)
+		onToggle(!row.active)
+	})
+
+	grid.Attach(button, 0, len(entries), 2, 1)
+	row.button = button
+
+	frame.Add(grid)
+
+	return frame, row, nil
+}
+
+// setPeerStats updates the live stats of every displayed peer.
+// Must be called on the GTK main thread.
+func (t *Tunnels) setPeerStats(peers []wgtypes.Peer) {
+	live := map[string]wgtypes.Peer{}
+	for _, p := range peers {
+		live[p.PublicKey.String()] = p
+	}
+
+	for _, row := range t.peerRows {
+		p, ok := live[row.publicKeyStr]
+		if ok {
+			row.active = true
+			row.handshake.SetText(humanize.Time(p.LastHandshakeTime))
+			row.transfer.SetText(peerTransferString(p))
+			if p.Endpoint != nil {
+				row.endpoint.SetText(p.Endpoint.String())
+			}
+		} else {
+			row.active = false
+			row.handshake.SetText("unknown")
+			row.transfer.SetText("unknown")
+		}
+
+		if row.button != nil {
+			row.button.SetSensitive(true)
+			if row.active {
+				row.button.SetLabel("Deactivate")
+				row.button.SetTooltipText("Remove this peer from the running interface")
+			} else {
+				row.button.SetLabel("Activate")
+				row.button.SetTooltipText("Add this peer back to the running interface")
+			}
+		}
+	}
+}
+
+// setPeerStatsUnknown resets the live stats of every displayed peer.
+// Must be called on the GTK main thread.
+func (t *Tunnels) setPeerStatsUnknown() {
+	for _, row := range t.peerRows {
+		row.active = false
+		row.handshake.SetText("unknown")
+		row.transfer.SetText("unknown")
+
+		if row.button != nil {
+			row.button.SetLabel("Activate")
+			row.button.SetSensitive(false)
+		}
 	}
 }
 
@@ -1150,14 +1614,15 @@ func (t *Tunnels) ScanTunnels() error {
 
 					log.Debug().Str("country", countryCode).Str("ip", ip).Msg("found country for tunnel")
 
-					flag, err := loadEmbeddedImage("./flags/" + countryCode + ".png")
-					if err != nil {
-						log.Error().Err(err).Str("country", countryCode).Str("ip", ip).Msg("error loading embedded image")
-						return err
-					}
+					// GTK images must be created and used on the main thread
+					runOnMainThread(func() {
+						flag, err := loadEmbeddedImage("./flags/" + countryCode + ".png")
+						if err != nil {
+							log.Error().Err(err).Str("country", countryCode).Str("ip", ip).Msg("error loading embedded image")
+							return
+						}
 
-					// prevents crash when deleting servers
-					glib.IdleAdd(func() {
+						// prevents crash when deleting servers
 						if country != nil && country.GetPixbuf() != nil {
 							country.SetFromPixbuf(flag.GetPixbuf())
 						}
@@ -1228,17 +1693,10 @@ func (t *Tunnels) UnknownLabels() {
 		t.Interface.Status.SetText("unknown")
 		t.Interface.DNS.SetText("unknown")
 
-		t.Peer.AllowedIPs.SetText("unknown")
-		t.Peer.PublicKey.SetText("unknown")
-		t.Peer.Endpoint.SetText("unknown")
-
-		t.Interface.Status.SetText("unknown")
-		t.ButtonChangeState.SetLabel("unknown")
 		t.Interface.PublicKey.SetText("unknown")
 		t.Interface.ListenPort.SetText("unknown")
-		t.Peer.LatestHandshake.SetText("unknown")
 
-		t.Peer.Transfer.SetText("unknown")
+		t.setPeerStatsUnknown()
 	})
 }
 
@@ -1260,18 +1718,20 @@ func (t *Tunnels) ToggleTunnel(row *gtk.ListBoxRow, name string) error {
 	}
 
 	if row == nil && name != "" {
-		if tl, err := get.ListBox("tunnel_list"); err == nil {
-			for i := uint(0); ; i++ {
-				r := tl.GetRowAtIndex(int(i))
-				if r == nil {
-					break
-				}
-				if rname, _ := r.GetName(); rname == name {
-					row = r
-					break
+		runOnMainThread(func() {
+			if tl, err := get.ListBox("tunnel_list"); err == nil {
+				for i := uint(0); ; i++ {
+					r := tl.GetRowAtIndex(int(i))
+					if r == nil {
+						break
+					}
+					if rname, _ := r.GetName(); rname == name {
+						row = r
+						break
+					}
 				}
 			}
-		}
+		})
 	}
 
 	activeNames := t.ActiveDeviceName()
@@ -1318,7 +1778,9 @@ func (t *Tunnels) ToggleTunnel(row *gtk.ListBoxRow, name string) error {
 			}
 		}
 
-		indicator.SetIcon("wireguard_off")
+		runOnMainThread(func() {
+			indicator.SetIcon("wireguard_off")
+		})
 		return wlog("INFO", "Disconnected from "+d.Name)
 	}
 
@@ -1347,7 +1809,9 @@ func (t *Tunnels) ToggleTunnel(row *gtk.ListBoxRow, name string) error {
 
 	// dont connect to the new one as this is a disconnect action
 	if dry.StringListContains(activeNames, name) {
-		t.UpdateRow(row)
+		runOnMainThread(func() {
+			t.UpdateRow(row)
+		})
 
 		glib.IdleAdd(func() {
 			if len(activeNames) == 1 {
@@ -1421,16 +1885,21 @@ func (t *Tunnels) SetPasswordless() error {
 	}
 
 	changed := false
-	if Settings.Passwordless && bytes.Contains(content, []byte("<allow_any>auth_admin</allow_any>")) {
-		content = bytes.Replace(content, []byte("<allow_any>auth_admin</allow_any>"), []byte("<allow_any>yes</allow_any>"), 1)
-		content = bytes.Replace(content, []byte("<allow_inactive>auth_admin</allow_inactive>"), []byte("<allow_inactive>yes</allow_inactive>"), 1)
-		content = bytes.Replace(content, []byte("<allow_active>auth_admin_keep</allow_active>"), []byte("<allow_active>yes</allow_active>"), 1)
-		changed = true
-	} else if !Settings.Passwordless && bytes.Contains(content, []byte("<allow_any>yes</allow_any>")) {
-		content = bytes.Replace(content, []byte("<allow_any>yes</allow_any>"), []byte("<allow_any>auth_admin</allow_any>"), 1)
-		content = bytes.Replace(content, []byte("<allow_inactive>yes</allow_inactive>"), []byte("<allow_inactive>auth_admin</allow_inactive>"), 1)
-		content = bytes.Replace(content, []byte("<allow_active>yes</allow_active>"), []byte("<allow_active>auth_admin_keep</allow_active>"), 1)
-		changed = true
+	if Settings.Passwordless {
+		updated := content
+		updated = bytes.ReplaceAll(updated, []byte("<allow_any>auth_admin</allow_any>"), []byte("<allow_any>yes</allow_any>"))
+		updated = bytes.ReplaceAll(updated, []byte("<allow_inactive>auth_admin</allow_inactive>"), []byte("<allow_inactive>yes</allow_inactive>"))
+		updated = bytes.ReplaceAll(updated, []byte("<allow_active>auth_admin_keep</allow_active>"), []byte("<allow_active>yes</allow_active>"))
+		updated = bytes.ReplaceAll(updated, []byte("<allow_active>auth_admin</allow_active>"), []byte("<allow_active>yes</allow_active>"))
+		changed = !bytes.Equal(updated, content)
+		content = updated
+	} else {
+		updated := content
+		updated = bytes.ReplaceAll(updated, []byte("<allow_any>yes</allow_any>"), []byte("<allow_any>auth_admin</allow_any>"))
+		updated = bytes.ReplaceAll(updated, []byte("<allow_inactive>yes</allow_inactive>"), []byte("<allow_inactive>auth_admin</allow_inactive>"))
+		updated = bytes.ReplaceAll(updated, []byte("<allow_active>yes</allow_active>"), []byte("<allow_active>auth_admin_keep</allow_active>"))
+		changed = !bytes.Equal(updated, content)
+		content = updated
 	}
 
 	if changed {
@@ -1443,30 +1912,34 @@ func (t *Tunnels) SetPasswordless() error {
 }
 
 func wlog(t string, text string) error {
-	wlogs, err := get.ListBox("wireguard_logs")
-	if err != nil {
-		return err
-	}
+	var werr error
 
-	l, err := gtk.LabelNew("")
-	if err != nil {
-		return err
-	}
+	runOnMainThread(func() {
+		if t == "ERROR" {
+			t = `<span color="#FF0000">` + t + "</span>"
+		}
 
-	if t == "ERROR" {
-		t = `<span color="#FF0000">` + t + "</span>"
-	}
+		wlogs, err := get.ListBox("wireguard_logs")
+		if err != nil {
+			werr = err
+			return
+		}
 
-	l.SetMarkup(`<span color="#008080">[` + time.Now().Format("02/Jan/06 15:04:05 MST") + `]</span>[` + t + `]: ` + text)
-	l.SetHExpand(true)
-	l.SetHAlign(gtk.ALIGN_START)
+		l, err := gtk.LabelNew("")
+		if err != nil {
+			werr = err
+			return
+		}
 
-	glib.IdleAdd(func() {
+		l.SetMarkup(`<span color="#008080">[` + time.Now().Format("02/Jan/06 15:04:05 MST") + `]</span>[` + t + `]: ` + text)
+		l.SetHExpand(true)
+		l.SetHAlign(gtk.ALIGN_START)
+
 		l.Show()
 		wlogs.Add(l)
 	})
 
-	return nil
+	return werr
 }
 
 func parseZipArchive(target string) error {
